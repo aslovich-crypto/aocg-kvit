@@ -7037,14 +7037,190 @@ export function NastroykiPage({
 
   const [invites, setInvites] = useState([]);
   const [copiedToken, setCopiedToken] = useState(null);
+  const [историяОткрыта, setИсторияОткрыта] = useState(false);
+  // Разбор списка на два: признак `отработала` считает сервер по `is_active`
+  // (23db3b1). Порядок внутри каждого — уже правильный, его задаёт ORDER BY.
+  const живыеПриглашения = invites.filter((i) => !i["отработала"]);
+  const отработавшиеПриглашения = invites.filter((i) => i["отработала"]);
+
   const [resentToken, setResentToken] = useState(null);
   const [ошибкаПриглашений, setОшибкаПриглашений] = useState("");
+
+  // ⚠️ «СПИСОК ПУСТ» И «СПИСОК НЕ ЗАГРУЗИЛСЯ» — РАЗНЫЕ ВЕЩИ (класс T169, тот же
+  // случай, что чинили на экране входа по ссылке). Отказ молча превращался в
+  // пустой массив, и человек читал «нет ожидающих приглашений», хотя сервер
+  // просто не ответил: он шёл выписывать второе приглашение вместо того, чтобы
+  // обновить экран.
+  const [сбойСписка, setСбойСписка] = useState(false);
 
   const loadInvites = () =>
     authFetch(`/api/invite/list`)
       .then((r) => r.json())
-      .then((d) => setInvites(Array.isArray(d) ? d : []))
-      .catch(() => {});
+      .then((d) => {
+        setInvites(Array.isArray(d) ? d : []);
+        setСбойСписка(false);
+      })
+      .catch(() => setСбойСписка(true));
+  // ⚠️ ОДНА РАЗМЕТКА НА ОБА СПИСКА. Живые и отработавшие показываются в разных
+  // местах экрана, но это одна и та же карточка приглашения: вторая копия
+  // разошлась бы с первой молча — тот же класс, что копии словарей и правил.
+  const приглашение = (inv) => (
+    <div
+      key={inv.token}
+      style={{
+        background: theme.surface,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 12,
+        padding: "12px 14px",
+        marginBottom: 8,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: theme.fg1,
+            fontFamily: FONT,
+          }}
+        >
+          {[inv.first_name, inv.last_name].filter(Boolean).join(" ") ||
+            inv.email ||
+            "Без имени"}
+        </span>
+        <span
+          style={{
+            fontSize: 12,
+            color: theme.fg2,
+            fontFamily: FONT,
+          }}
+        >
+          {roleLabel(inv.role)}
+        </span>
+      </div>
+
+      {/* ⚠️ СТАТУС СЛОВАМИ, А НЕ ДРОБЬЮ. Было «0/1 исп.» — человек
+    не может по этому понять, ждут его или он уже вошёл. */}
+      <div
+        style={{
+          fontSize: 12,
+          color: theme.fg2,
+          fontFamily: FONT,
+          marginTop: 4,
+        }}
+      >
+        {inv["статус"] || "приглашён, ожидает"}
+        {inv.sent_at
+          ? ` · письмо ${new Date(inv.sent_at).toLocaleDateString("ru-RU")}`
+          : inv.email
+            ? " · письмо не отправлялось"
+            : " · общая ссылка, адресата нет"}
+      </div>
+
+      {/* ⚠️ СРОК И ПЕРЕХОДЫ ВИДНЫ У КАЖДОЙ ССЫЛКИ, а у общей это
+    единственный способ понять, что с ней происходит: адресата
+    у неё нет, и «ждут ли кого-то» по имени не прочитать.
+    Оба числа приходят в /api/invite/list, показывать их было
+    нечем — строки просто не было. */}
+      <div
+        style={{
+          fontSize: 12,
+          color: theme.fg2,
+          fontFamily: FONT,
+          marginTop: 2,
+        }}
+      >
+        {inv.expires_at
+          ? `действует до ${new Date(inv.expires_at).toLocaleString("ru-RU", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`
+          : "без срока"}
+        {` · переходов ${inv.uses_count ?? 0} из ${inv.max_uses ?? 1}`}
+      </div>
+
+      {/* ⚠️ У ОТРАБОТАВШЕЙ ГЛАВНОЕ — КОГО ЗАВЕЛИ. Ради этого и заведена
+        колонка `used_by_user_id` (23db3b1): раньше по погашенной ссылке
+        нельзя было сказать, кто по ней вошёл, вообще никак. */}
+      {inv["отработала"] && (
+        <div
+          style={{
+            fontSize: 12,
+            color: theme.fg2,
+            fontFamily: FONT,
+            marginTop: 2,
+          }}
+        >
+          {inv["вошёл"]
+            ? `вошёл: ${inv["вошёл"]}` +
+              (inv.used_at
+                ? ` · ${new Date(inv.used_at).toLocaleString("ru-RU", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : "")
+            : // ⚠️ СЛОВОМ, А НЕ ПУСТОТОЙ И НЕ ДОГАДКОЙ. У восьми старых ссылок
+              // отметки нет и быть не может: связи в базе не существовало, а
+              // сопоставление по времени на проде дало НЕВЕРНЫЙ ответ. Пустое
+              // место человек прочитал бы как «никто не вошёл» — это неправда.
+              "кто вошёл — неизвестно: ссылка выдана до того, как это стали записывать"}
+        </div>
+      )}
+
+      {/* ⚠️ ССЫЛКА ВИДНА ВСЕГДА. Раньше её показывали ровно один
+    раз — в момент создания, — и скопировать вслепую было
+    единственным способом. Находка владельца. */}
+      <div
+        style={{
+          background: theme.surfaceSunk,
+          borderRadius: 8,
+          padding: "8px 10px",
+          marginTop: 8,
+          fontSize: 11,
+          color: theme.fg2,
+          fontFamily: theme.fontMono || "monospace",
+          wordBreak: "break-all",
+        }}
+      >
+        {inv.invite_url}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginTop: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <Btn small onClick={() => copyInvite(inv)}>
+          {copiedToken === inv.token ? "Скопировано ✓" : "Скопировать"}
+        </Btn>
+        {inv.email && (
+          <Btn small outline onClick={() => resendInvite(inv)}>
+            {resentToken === inv.token ? "Отправлено ✓" : "Отправить ещё раз"}
+          </Btn>
+        )}
+        <Btn small outline onClick={() => delInvite(inv.token)}>
+          Отозвать
+        </Btn>
+      </div>
+    </div>
+  );
+
   const delInvite = (token) =>
     authFetch(`/api/invite/${token}`, { method: "DELETE" })
       .then(() => loadInvites())
@@ -7214,156 +7390,79 @@ export function NastroykiPage({
 
           <div style={{ marginTop: 18 }}>
             <SectionHead title="Приглашения" />
-            {invites.length === 0 && (
+            {/* ⚠️ ЖИВЫЕ И ОТРАБОТАВШИЕ — РАЗНЫЕ СПИСКИ, И ЭТО НЕ УКРАШЕНИЕ.
+                С 23db3b1 бэкенд отдаёт ВСЕ приглашения: одноразовая ссылка
+                гаснет сразу после регистрации, и без погашенных не видно
+                истории вовсе. Но в базе их большинство — вперемешку они
+                завалили бы собой те, с которыми ещё работают. */}
+            {сбойСписка ? (
               <div
                 style={{
                   fontSize: 12,
-                  color: theme.fg3,
+                  color: theme.fg2,
                   fontFamily: FONT,
                   padding: "4px 2px",
+                  lineHeight: 1.5,
                 }}
               >
-                Нет ожидающих приглашений
+                Не удалось загрузить приглашения — сервер не ответил. Это не
+                значит, что их нет.{" "}
+                <button
+                  onClick={loadInvites}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    color: theme.cherry,
+                    fontFamily: FONT,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  Загрузить ещё раз
+                </button>
+              </div>
+            ) : (
+              живыеПриглашения.length === 0 && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: theme.fg3,
+                    fontFamily: FONT,
+                    padding: "4px 2px",
+                  }}
+                >
+                  Нет ожидающих приглашений
+                </div>
+              )
+            )}
+            {живыеПриглашения.map((inv) => приглашение(inv))}
+
+            {отработавшиеПриглашения.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                {/* Свёрнуто по умолчанию: история нужна изредка, а места
+                    занимает больше всего. */}
+                <button
+                  onClick={() => setИсторияОткрыта((о) => !о)}
+                  aria-expanded={историяОткрыта}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: "6px 2px",
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: theme.fg2,
+                  }}
+                >
+                  Отработавшие ({отработавшиеПриглашения.length}){" "}
+                  {историяОткрыта ? "▴" : "▾"}
+                </button>
+                {историяОткрыта &&
+                  отработавшиеПриглашения.map((inv) => приглашение(inv))}
               </div>
             )}
-            {invites.map((inv) => (
-              <div
-                key={inv.token}
-                style={{
-                  background: theme.surface,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  marginBottom: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      color: theme.fg1,
-                      fontFamily: FONT,
-                    }}
-                  >
-                    {[inv.first_name, inv.last_name]
-                      .filter(Boolean)
-                      .join(" ") ||
-                      inv.email ||
-                      "Без имени"}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: theme.fg2,
-                      fontFamily: FONT,
-                    }}
-                  >
-                    {roleLabel(inv.role)}
-                  </span>
-                </div>
-
-                {/* ⚠️ СТАТУС СЛОВАМИ, А НЕ ДРОБЬЮ. Было «0/1 исп.» — человек
-                    не может по этому понять, ждут его или он уже вошёл. */}
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: theme.fg2,
-                    fontFamily: FONT,
-                    marginTop: 4,
-                  }}
-                >
-                  {inv["статус"] || "приглашён, ожидает"}
-                  {inv.sent_at
-                    ? ` · письмо ${new Date(inv.sent_at).toLocaleDateString(
-                        "ru-RU",
-                      )}`
-                    : inv.email
-                      ? " · письмо не отправлялось"
-                      : " · общая ссылка, адресата нет"}
-                </div>
-
-                {/* ⚠️ СРОК И ПЕРЕХОДЫ ВИДНЫ У КАЖДОЙ ССЫЛКИ, а у общей это
-                    единственный способ понять, что с ней происходит: адресата
-                    у неё нет, и «ждут ли кого-то» по имени не прочитать.
-                    Оба числа приходят в /api/invite/list, показывать их было
-                    нечем — строки просто не было. */}
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: theme.fg2,
-                    fontFamily: FONT,
-                    marginTop: 2,
-                  }}
-                >
-                  {inv.expires_at
-                    ? `действует до ${new Date(inv.expires_at).toLocaleString(
-                        "ru-RU",
-                        {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        },
-                      )}`
-                    : "без срока"}
-                  {` · переходов ${inv.uses_count ?? 0} из ${
-                    inv.max_uses ?? 1
-                  }`}
-                </div>
-
-                {/* ⚠️ ССЫЛКА ВИДНА ВСЕГДА. Раньше её показывали ровно один
-                    раз — в момент создания, — и скопировать вслепую было
-                    единственным способом. Находка владельца. */}
-                <div
-                  style={{
-                    background: theme.surfaceSunk,
-                    borderRadius: 8,
-                    padding: "8px 10px",
-                    marginTop: 8,
-                    fontSize: 11,
-                    color: theme.fg2,
-                    fontFamily: theme.fontMono || "monospace",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {inv.invite_url}
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginTop: 10,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <Btn small onClick={() => copyInvite(inv)}>
-                    {copiedToken === inv.token
-                      ? "Скопировано ✓"
-                      : "Скопировать"}
-                  </Btn>
-                  {inv.email && (
-                    <Btn small outline onClick={() => resendInvite(inv)}>
-                      {resentToken === inv.token
-                        ? "Отправлено ✓"
-                        : "Отправить ещё раз"}
-                    </Btn>
-                  )}
-                  <Btn small outline onClick={() => delInvite(inv.token)}>
-                    Отозвать
-                  </Btn>
-                </div>
-              </div>
-            ))}
             {ошибкаПриглашений && (
               <div
                 role="alert"

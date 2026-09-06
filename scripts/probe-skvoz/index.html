@@ -35,8 +35,25 @@
     var s=м && м.parentElement ? м.parentElement.querySelector('span') : null;
     return s ? s.textContent.trim() : "—";
   }
+  // ⚠️ ТОЛЬКО ВИДИМЫЙ ТЕКСТ, А НЕ `body.textContent` (T169/T171, заход B).
+  // Сам сценарий лежит инлайновым <script> ВНУТРИ body, и его исходник
+  // попадает в текст страницы: замер находил искомые строки В САМОМ СЕБЕ и
+  // отвечал «вижу» на пустом экране. Так уже зеленел сторож автора.
+  // Обходим текстовые узлы и берём только те, чей родитель отрисован.
+  function видимыйТекст(){
+    var ходок=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var куски=[];
+    while(ходок.nextNode()){
+      var р=ходок.currentNode.parentElement;
+      if(!р || р.tagName==="SCRIPT" || р.tagName==="STYLE") continue;
+      var рект=р.getBoundingClientRect();
+      if(рект.width<=0 || рект.height<=0) continue;
+      куски.push(ходок.currentNode.nodeValue);
+    }
+    return куски.join(" ");
+  }
   function естьТекст(подстрока){
-    return (document.body.textContent||"").indexOf(подстрока)>=0;
+    return видимыйТекст().indexOf(подстрока)>=0;
   }
 
   var ЧЕК_ПРОДАВЕЦ="ООО Сквозной Продавец";
@@ -96,6 +113,17 @@
         if(сумма) вписать(сумма, ЧЕК_СУММА);
         var к=кнопкаРовно("Добавить чек"); if(к) к.click();
       }, function(){ return естьТекст(ЧЕК_ПРОДАВЕЦ) ? "чек на экране" : "НЕ ВИДЕН"; }],
+
+    // ⚠️ СУММА ПРОВЕРЯЕТСЯ И НА ЭКРАНЕ, А НЕ ТОЛЬКО В БАЗЕ (T171, заход B).
+    // Обратная проверка 06.09.2026: обнуление суммы при приёме списка
+    // (`amount: 0` вместо `Number(r.amount)`) оставляло сторож ЗЕЛЁНЫМ —
+    // сумма сверялась SQL-запросом, а обратный путь «база → экран» не
+    // проверялся вовсе. Сквозной прибор обязан замкнуть круг: цифра, которую
+    // видит человек, а не та, что лежит в таблице.
+    ["⑤б сумма видна на экране", null, function(){
+        var т=видимыйТекст().replace(/\u00a0/g, " ");
+        return /1\s?234[.,]56/.test(т) ? "сумма на экране" : "СУММЫ НЕТ";
+      }],
     ["⑥ экран отчётов", function(){
         var к=кнопкаРовно("Отчёты"); if(к) к.click();
       }, function(){ return экран(); }],
@@ -176,7 +204,7 @@
             текстКнопок().map(function(б){
               return (б.textContent||"").trim().slice(0,24);
             }).slice(0,12).join(" | ")+
-            "; текст: "+(document.body.textContent||"").trim().slice(0,160)});
+            "; текст: "+видимыйТекст().trim().slice(0,160)});
       return;
     }
     идти(0);

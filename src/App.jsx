@@ -88,6 +88,7 @@ import {
 } from "./lib/api";
 // S-34: текст согласия только с бэкенда, локальной копии нет.
 import { загрузитьСогласие } from "./lib/policy";
+import { каноничныеЧеки, каноничныйЧек } from "./lib/receipt";
 
 // Sign out: revoke the refresh token server-side, clear local tokens, drop to login.
 async function logout() {
@@ -3336,7 +3337,7 @@ function OperaciiPage({
         setFnsStatus(null);
         setAddError("");
         setDupId(null);
-        setDetail({ ...ex, amount: Number(ex.amount) });
+        setDetail(каноничныйЧек(ex));
       }
     } catch {
       /* network — leave the banner as is */
@@ -10125,11 +10126,7 @@ export default function App() {
     authFetch(`/api/receipts/`)
       .then((r) => r.json())
       .then((data) => {
-        setReceipts(
-          Array.isArray(data)
-            ? data.map((r) => ({ ...r, amount: Number(r.amount) }))
-            : [],
-        );
+        setReceipts(каноничныеЧеки(data));
         пометитьСбой("чеки", false);
       })
       .catch(() => пометитьСбой("чеки", true));
@@ -10326,7 +10323,9 @@ export default function App() {
   }
 
   function handleAdd(created) {
-    const norm = { ...created, amount: Number(created.amount) };
+    // ⚠️ ФОРМА — общей функцией, а логика списка («заменить или положить
+    // в начало») остаётся ЗДЕСЬ: она про список, а не про чек (T177).
+    const norm = каноничныйЧек(created);
     setReceipts((prev) =>
       prev.some((x) => x.id === norm.id)
         ? prev.map((x) => (x.id === norm.id ? norm : x))
@@ -10401,8 +10400,7 @@ export default function App() {
       const res = await authFetch(`/api/receipts/`);
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data))
-        setReceipts(data.map((r) => ({ ...r, amount: Number(r.amount) })));
+      if (Array.isArray(data)) setReceipts(каноничныеЧеки(data));
     } catch {
       /* офлайн — оставляем текущий список */
     }
@@ -10417,7 +10415,7 @@ export default function App() {
       const res = await authFetch(`/api/receipts/${id}`);
       if (!res.ok) return null;
       const fresh = await res.json();
-      const norm = { ...fresh, amount: Number(fresh.amount) };
+      const norm = каноничныйЧек(fresh);
       setReceipts((prev) => prev.map((r) => (r.id === id ? norm : r)));
       return norm;
     } catch {
@@ -10434,7 +10432,7 @@ export default function App() {
       });
       if (!res.ok) return null;
       const updated = await res.json();
-      const norm = { ...updated, amount: Number(updated.amount) };
+      const norm = каноничныйЧек(updated);
       setReceipts((prev) => prev.map((r) => (r.id === id ? norm : r)));
       return norm;
     } catch {

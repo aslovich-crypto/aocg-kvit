@@ -1,0 +1,151 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>проба суммы на всех путях</title>
+<style>body{margin:0;background:#F6F7F9;width:430px}</style></head>
+<body><div id="root"></div>
+<div id="ЗАМЕР"></div>
+<script>
+// ⚠️ СЦЕНАРИЙ ИДЁТ ПО ЭКРАНУ «ЧЕКИ» — ТОМУ, ГДЕ ЧЕЛОВЕК СМОТРИТ (T165),
+// и читает ВИДИМЫЙ текст, а не исходник страницы (T169): сам этот сценарий
+// лежит инлайновым <script> внутри body, и его текст попал бы в замер.
+(function(){
+  var шаги=[], ждём=0;
+  function кнопки(){ return [].slice.call(document.querySelectorAll('button')); }
+  function кнопкаРовно(т){
+    return кнопки().find(function(б){ return (б.textContent||"").trim()===т; });
+  }
+  function кнопкаСо(т){
+    return кнопки().find(function(б){ return (б.textContent||"").indexOf(т)>=0; });
+  }
+  function видимыйТекст(){
+    var ходок=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var куски=[];
+    while(ходок.nextNode()){
+      var р=ходок.currentNode.parentElement;
+      if(!р || р.tagName==="SCRIPT" || р.tagName==="STYLE") continue;
+      var рект=р.getBoundingClientRect();
+      if(рект.width<=0 || рект.height<=0) continue;
+      куски.push(ходок.currentNode.nodeValue);
+    }
+    return куски.join(" ").replace(/ /g," ");
+  }
+  // ⚠️ СУММА ИЩЕТСЯ ЦЕЛИКОМ, С КОПЕЙКАМИ: «450» нашлось бы и в дате, и в id.
+  function суммаНаЭкране(строка){
+    return видимыйТекст().indexOf(строка)>=0;
+  }
+  function вписать(поле, значение){
+    var прото=Object.getPrototypeOf(поле);
+    var сеттер=Object.getOwnPropertyDescriptor(прото,"value").set;
+    сеттер.call(поле, значение);
+    поле.dispatchEvent(new Event("input",{bubbles:true}));
+    поле.dispatchEvent(new Event("change",{bubbles:true}));
+  }
+  function поЛюбому(подписи){
+    var поля=[].slice.call(document.querySelectorAll('input'));
+    return поля.find(function(п){
+      var т=(п.placeholder||"")+" "+(п.getAttribute('aria-label')||"");
+      return подписи.test(т);
+    });
+  }
+  function открытьЧек(продавец){
+    var узел=[].slice.call(document.querySelectorAll("*")).find(function(э){
+      return э.children.length===0 && (э.textContent||"").trim()===продавец;
+    });
+    if(!узел) return false;
+    var у=узел;
+    while(у && у!==document.body){
+      if(у.tagName==="BUTTON" || у.getAttribute && у.getAttribute("role")==="button"){ у.click(); return true; }
+      у=у.parentElement;
+    }
+    узел.click(); return true;
+  }
+
+  var сценарий=[
+    ["① список — сумма первой загрузки", function(){
+        var к=кнопкаРовно("Чеки"); if(к) к.click();
+      }, function(){ return суммаНаЭкране("450,00") ? "450,00 на экране" : "НЕТ"; }],
+
+    ["② карточка — сумма после перечитывания", function(){
+        открытьЧек("Кофейня");
+      }, function(){ return суммаНаЭкране("450,00") ? "450,00 на экране" : "НЕТ"; }],
+
+    ["③ карточка закрыта", function(){
+        var к=document.querySelector('button[aria-label="Закрыть"]');
+        if(к) к.click(); else { var н=кнопкаСо("Назад"); if(н) н.click(); }
+      }, function(){ return суммаНаЭкране("450,00") ? "список на месте" : "НЕТ"; }],
+
+    ["④ ввод чека открыт", function(){
+        var к=document.querySelector('button[aria-label="Добавить чек"]');
+        if(к) к.click();
+      }, function(){ return кнопкаСо("вручную") || кнопкаРовно("Добавить чек") ? "ввод открыт" : "НЕТ"; }],
+    ["⑤ ручной ввод", function(){
+        var к=кнопкаСо("вручную"); if(к) к.click();
+      }, function(){ return кнопкаСо("Записать без проверки") || кнопкаРовно("Добавить чек") ? "реквизиты" : "НЕТ"; }],
+    ["⑥ форма чека", function(){
+        var к=кнопкаСо("Записать без проверки"); if(к) к.click();
+      }, function(){ return кнопкаРовно("Добавить чек") ? "форма" : "НЕТ"; }],
+    ["⑦ новый чек со своей суммой", function(){
+        var продавец=поЛюбому(/продав|организац|магаз|Яндекс|ООО/i);
+        var сумма=поЛюбому(/сумм|итог|0\.00|₽/i);
+        if(продавец) вписать(продавец,"Пекарня");
+        if(сумма) вписать(сумма,"1234.56");
+        var к=кнопкаРовно("Добавить чек"); if(к) к.click();
+      }, function(){
+        return суммаНаЭкране("1 234,56") ? "1 234,56 на экране" : "НЕТ";
+      }],
+
+    ["⑧ ввод дубля открыт", function(){
+        var к=document.querySelector('button[aria-label="Добавить чек"]');
+        if(к) к.click();
+      }, function(){ return кнопкаСо("вручную") || кнопкаРовно("Добавить чек") ? "ввод открыт" : "НЕТ"; }],
+    ["⑨ реквизиты дубля", function(){
+        var к=кнопкаСо("вручную"); if(к) к.click();
+      }, function(){ return кнопкаСо("Записать без проверки") ? "реквизиты" : "НЕТ"; }],
+    ["⑩ форма дубля", function(){
+        var к=кнопкаСо("Записать без проверки"); if(к) к.click();
+      }, function(){ return кнопкаРовно("Добавить чек") ? "форма" : "НЕТ"; }],
+    ["⑪ дубль отклонён сервером", function(){
+        var продавец=поЛюбому(/продав|организац|магаз|Яндекс|ООО/i);
+        var сумма=поЛюбому(/сумм|итог|0\.00|₽/i);
+        if(продавец) вписать(продавец,"Аптека");
+        if(сумма) вписать(сумма,"777.77");
+        var к=кнопкаРовно("Добавить чек"); if(к) к.click();
+      }, function(){ return кнопкаРовно("Открыть") ? "плашка с «Открыть»" : "НЕТ"; }],
+    ["⑫ карточка дубля — 777,77", function(){
+        var о=кнопкаРовно("Открыть"); if(о) о.click();
+      }, function(){
+        return суммаНаЭкране("777,77") ? "777,77 на экране" : "НЕТ";
+      }],
+  ];
+
+  function шаг(i){
+    if(i>=сценарий.length){
+      document.getElementById("ЗАМЕР").textContent=JSON.stringify(шаги);
+      return;
+    }
+    var с=сценарий[i];
+    try{ if(с[1]) с[1](); }catch(е){ шаги.push(с[0]+": ОШИБКА "+е.message); return шаг(i+1); }
+    setTimeout(function(){
+      var что;
+      try{ что=с[2](); }catch(е){ что="ОШИБКА "+е.message; }
+      шаги.push(с[0]+": "+что);
+      шаг(i+1);
+    }, 700);
+  }
+  // ⚠️ ЖДЁМ ОТРИСОВКИ, А НЕ УГАДЫВАЕМ ВРЕМЯ. Первая редакция стартовала
+  // по таймеру 1500 мс и мерила ПУСТУЮ страницу: «длина=0 кнопок=0», все
+  // одиннадцать шагов краснели одинаково — прибор врал про приложение,
+  // а сломан был он сам.
+  function старт(){
+    if(!кнопкаРовно("Чеки") && ждём++<80) return setTimeout(старт,150);
+    if(!кнопкаРовно("Чеки")){
+      document.getElementById("ЗАМЕР").textContent=
+        JSON.stringify({"НЕ_ОТРИСОВАЛОСЬ":true});
+      return;
+    }
+    шаг(0);
+  }
+  старт();
+})();
+</script>
+<script type="module" src="./probe.jsx"></script></body></html>

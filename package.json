@@ -21,7 +21,9 @@
     "invite": "node scripts/check-invite.mjs",
     "join": "node scripts/check-join.mjs",
     "invites": "node scripts/check-invites-list.mjs",
-    "otkaz": "node scripts/check-otkaz.mjs"
+    "otkaz": "node scripts/check-otkaz.mjs",
+    "summa": "node scripts/check-summa.mjs",
+    "summa-mut": "node scripts/summa-mutations.mjs"
   },
   "dependencies": {
     "@zumer/snapdom": "^2.12.8",

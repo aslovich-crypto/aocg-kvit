@@ -9357,8 +9357,15 @@ function RegisterScreen({ onAuthed, navigate }) {
 }
 
 function JoinScreen({ token, onAuthed, navigate }) {
-  const [info, setInfo] = useState(null); // {is_valid, role, org_name}
+  const [info, setInfo] = useState(null); // {is_valid, role, org_name, is_personal, email}
   const [loading, setLoading] = useState(true);
+  // ⚠️ «СЕРВЕР НЕ ОТВЕТИЛ» И «ССЫЛКА НЕДЕЙСТВИТЕЛЬНА» — РАЗНЫЕ ВЕЩИ, и до
+  // 06.09.2026 экран говорил про обе одно: `catch` клал `info = null`, и
+  // человек читал «ссылка недействительна или истекла». Он шёл писать
+  // администратору про сломанное приглашение, хотя чинить было нечего —
+  // связь пропала на десять секунд. Отказ загрузки чинится обновлением,
+  // мёртвая ссылка — новой ссылкой; это разные действия человека.
+  const [сбой, setСбой] = useState(false);
   const [f, setF] = useState({
     first_name: "",
     last_name: "",
@@ -9373,19 +9380,34 @@ function JoinScreen({ token, onAuthed, navigate }) {
   const [sent, setSent] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => {
+  // ⚠️ В САМОЙ ФУНКЦИИ СИНХРОННОГО setState НЕТ — только в ответах сервера.
+  // Иначе её вызов из эффекта ловит правило react-hooks: синхронный setState
+  // в эффекте даёт каскадные перерисовки. Сброс состояния перед повтором
+  // делает кнопка, которая его и нажимает.
+  const проверить = useCallback(() => {
     fetchWithTimeout(
       API + "/api/invite/validate/" + encodeURIComponent(token),
       {},
       12000,
     )
       .then(async (r) => {
-        setInfo(await r.json().catch(() => null));
+        const d = await r.json().catch(() => null);
+        setInfo(d);
+        // ⚠️ АДРЕС ПОДСТАВЛЯЕМ СРАЗУ. Приглашение выписано на конкретного
+        // человека, и сервер сверяет адрес (a5bcb13): пустое поле означало
+        // «угадайте, кого звали» — ошибётся, получит отказ и не поймёт, чем
+        // его почта не угодила.
+        if (d && d.is_personal && d.email) {
+          setF((p) => ({ ...p, email: d.email }));
+        }
       })
-      .catch(() => setInfo(null))
+      .catch(() => setСбой(true))
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token]);
+
+  useEffect(() => {
+    проверить();
+  }, [проверить]);
 
   async function submit() {
     setErr("");
@@ -9456,6 +9478,51 @@ function JoinScreen({ token, onAuthed, navigate }) {
           >
             Проверяем приглашение…
           </div>
+        </div>
+      </AuthShell>
+    );
+  // ⚠️ СНАЧАЛА СБОЙ СВЯЗИ, ПОТОМ ПРИГОДНОСТЬ ССЫЛКИ. Порядок веток и есть
+  // различение: пока они были одной, «не дозвонились до сервера» читалось
+  // как «ссылку отозвали».
+  if (сбой)
+    return (
+      <AuthShell>
+        <div style={{ textAlign: "center", maxWidth: 340 }}>
+          <AocgLogo width={120} />
+          <div
+            style={{
+              marginTop: 22,
+              fontSize: 15,
+              color: C.dark,
+              fontFamily: FONT,
+              lineHeight: 1.5,
+            }}
+          >
+            Не удалось проверить приглашение — сервер не ответил. Ссылка, скорее
+            всего, цела: попробуйте ещё раз.
+          </div>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setСбой(false);
+              проверить();
+            }}
+            type="button"
+            style={{
+              marginTop: 16,
+              padding: "11px 20px",
+              background: theme.cherry,
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              fontSize: 14,
+              cursor: "pointer",
+              fontFamily: FONT,
+              fontWeight: 600,
+            }}
+          >
+            Проверить ещё раз
+          </button>
         </div>
       </AuthShell>
     );
@@ -9558,15 +9625,41 @@ function JoinScreen({ token, onAuthed, navigate }) {
             aria-label="Телефон"
             style={A_INPUT}
           />
+          {/* ⚠️ У ИМЕННОЙ ССЫЛКИ ПОЧТА НЕ РЕДАКТИРУЕТСЯ. Сервер сверяет её
+              (a5bcb13), и правка поля может закончиться только отказом —
+              поле, в котором можно набрать лишь один верный ответ, лучше
+              показать готовым. У общей ссылки адресата нет, там поле своё. */}
           <input
             value={f.email}
             onChange={(e) => set("email", e.target.value)}
+            readOnly={!!info.is_personal}
             autoCapitalize="none"
             autoCorrect="off"
             placeholder="Email"
             aria-label="Email"
-            style={A_INPUT}
+            style={
+              info.is_personal
+                ? {
+                    ...A_INPUT,
+                    background: theme.surfaceSunk,
+                    color: theme.fg2,
+                  }
+                : A_INPUT
+            }
           />
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.fg2,
+              fontFamily: FONT,
+              lineHeight: 1.45,
+              marginTop: -4,
+            }}
+          >
+            {info.is_personal
+              ? "Приглашение выписано на этот адрес — войти можно только с него."
+              : "Это общая ссылка: по ней входит любой, кто её получил. Укажите свою почту — роль будет «Сотрудник»."}
+          </div>
           <div style={{ position: "relative" }}>
             <input
               value={f.password}

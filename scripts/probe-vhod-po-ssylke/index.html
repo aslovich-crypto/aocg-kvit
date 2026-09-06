@@ -1,0 +1,129 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>проба входа по ссылке</title>
+<style>body{margin:0;background:#F6F7F9;width:430px}</style></head>
+<body><div id="root"></div>
+<div id="ЗАМЕР"></div>
+<script>
+// ⚠️ СЦЕНАРИЙ ИДЁТ ПО ЭКРАНУ ВХОДА ПО ССЫЛКЕ — тому, что открывает
+// приглашённый человек (правило T165).
+(function(){
+  var шаги=[], ждём=0;
+  var СЛУЧАЙ=new URLSearchParams(location.search).get("sluchay")||"imennaya";
+  function кнопки(){ return [].slice.call(document.querySelectorAll('button')); }
+  function кнопкаСо(п){
+    return кнопки().find(function(б){ return (б.textContent||"").indexOf(п)>=0; });
+  }
+  // ⚠️ ТОЛЬКО ВИДИМЫЙ ТЕКСТ (T169): сам сценарий лежит инлайновым <script>
+  // внутри body, и `body.textContent` вернул бы его собственный исходник.
+  function видимыйТекст(){
+    var ходок=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var куски=[];
+    while(ходок.nextNode()){
+      var р=ходок.currentNode.parentElement;
+      if(!р || р.tagName==="SCRIPT" || р.tagName==="STYLE") continue;
+      var рект=р.getBoundingClientRect();
+      if(рект.width<=0 || рект.height<=0) continue;
+      куски.push(ходок.currentNode.nodeValue);
+    }
+    return куски.join(" ");
+  }
+  function естьНаЭкране(п){ return видимыйТекст().indexOf(п)>=0; }
+  function поле(метка){ return document.querySelector('input[aria-label="'+метка+'"]'); }
+  function ввести(метка, значение){
+    var п=поле(метка); if(!п) return "ПОЛЯ НЕТ";
+    var сеттер=Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, "value").set;
+    сеттер.call(п, значение);
+    п.dispatchEvent(new Event("input", {bubbles:true}));
+    return "введено";
+  }
+
+  var сценарий=[
+    ["① экран приглашения", null, function(){
+        if(естьНаЭкране("Присоединиться к")) return "форма входа";
+        if(естьНаЭкране("сервер не ответил")) return "сбой связи";
+        if(естьНаЭкране("Ссылка недействительна")) return "ссылка мертва";
+        return "НЕПОНЯТНО";
+      }],
+
+    // ⚠️ ГЛАВНОЕ У ИМЕННОЙ: адрес подставлен и не правится. Пустое поле
+    // означало «угадайте, кого звали» — сервер сверяет почту (a5bcb13).
+    ["② почта в поле", null, function(){
+        var п=поле("Email");
+        if(!п) return "ПОЛЯ НЕТ";
+        return (п.value||"пусто")+(п.readOnly?" · не правится":" · правится");
+      }],
+
+    ["③ природа ссылки названа словами", null, function(){
+        if(естьНаЭкране("выписано на этот адрес")) return "именная";
+        if(естьНаЭкране("общая ссылка")) return "общая";
+        return "МОЛЧИТ";
+      }],
+
+    // Отказ сервера доходит СВОИМИ словами, а не заменяется нашими.
+    ["④ отказ 400 словами сервера", function(){
+        if(СЛУЧАЙ!=="otkaz") return;
+        ввести("Имя", "Иван");
+        ввести("Пароль", "парольдлинный");
+        ввести("Повторите пароль", "парольдлинный");
+        setTimeout(function(){
+          // ⚠️ Кнопка называется «Присоединиться», а не «Зарегистрироваться»:
+          // на этом экране человек входит в ЧУЖУЮ организацию по приглашению.
+          // Первая редакция пробы искала кнопку с чужого экрана и молча
+          // ничего не нажимала — сторож краснел на исправном коде.
+          var к=кнопки().find(function(б){
+            return (б.textContent||"").trim()==="Присоединиться";
+          });
+          if(к) к.click();
+        }, 250);
+      }, function(){
+        if(СЛУЧАЙ!=="otkaz") return "случай без отказа";
+        if(естьНаЭкране("выписано на другой адрес")) return "текст сервера";
+        return "НЕ СКАЗАНО";
+      }],
+
+    // ⚠️ «Сервер не ответил» и «ссылка недействительна» — разные вещи:
+    // первое чинится обновлением, второе — новой ссылкой.
+    ["⑤ сбой связи отличён от мёртвой ссылки", null, function(){
+        if(СЛУЧАЙ!=="sboy") return "случай без сбоя";
+        var сбой=естьНаЭкране("сервер не ответил");
+        var мертва=естьНаЭкране("Ссылка недействительна");
+        var повтор=!!кнопкаСо("Проверить ещё раз");
+        return (сбой?"сказано про связь":"НЕ СКАЗАНО")+
+          (мертва?" · НО НАЗВАНА НЕДЕЙСТВИТЕЛЬНОЙ":"")+
+          (повтор?" · есть повтор":" · без повтора");
+      }],
+  ];
+
+  function идти(i){
+    if(i>=сценарий.length){
+      document.getElementById("ЗАМЕР").textContent=JSON.stringify(шаги);
+      return;
+    }
+    if(сценарий[i][1]) сценарий[i][1]();
+    setTimeout(function(){
+      var что="—";
+      try { что=сценарий[i][2](); } catch(е){ что="ОШИБКА ЗАМЕРА"; }
+      шаги.push(сценарий[i][0]+": "+что);
+      идти(i+1);
+    }, 700);
+  }
+  function старт(){
+    var готов=function(){
+      return естьНаЭкране("Присоединиться к") ||
+        естьНаЭкране("сервер не ответил") ||
+        естьНаЭкране("Ссылка недействительна");
+    };
+    if(!готов() && ждём++<80) return setTimeout(старт,150);
+    if(!готов()){
+      document.getElementById("ЗАМЕР").textContent=
+        JSON.stringify({"НЕ_ОТРИСОВАЛОСЬ":true});
+      return;
+    }
+    идти(0);
+  }
+  старт();
+})();
+</script>
+<script type="module" src="./probe.jsx"></script></body></html>

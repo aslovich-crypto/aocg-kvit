@@ -18,7 +18,8 @@
     "token": "node scripts/check-token-expiry.mjs",
     "author": "node scripts/check-author.mjs",
     "delete": "node scripts/check-delete.mjs",
-    "invite": "node scripts/check-invite.mjs"
+    "invite": "node scripts/check-invite.mjs",
+    "join": "node scripts/check-join.mjs"
   },
   "dependencies": {
     "@zumer/snapdom": "^2.12.8",

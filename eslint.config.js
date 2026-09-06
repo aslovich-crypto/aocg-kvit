@@ -25,6 +25,7 @@ export default defineConfig([
     "scripts/probe-priglashenie/__dist",
     "scripts/probe-vhod-po-ssylke/__dist",
     "scripts/probe-priglasheniya-spisok/__dist",
+    "scripts/probe-otkaz-zagruzki/__dist",
     "scripts/probe-boundary/__dist",
     "scripts/probe-scroll/__dist",
     "scripts/probe-vid/__dist",

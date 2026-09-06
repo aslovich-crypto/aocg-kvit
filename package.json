@@ -20,7 +20,8 @@
     "delete": "node scripts/check-delete.mjs",
     "invite": "node scripts/check-invite.mjs",
     "join": "node scripts/check-join.mjs",
-    "invites": "node scripts/check-invites-list.mjs"
+    "invites": "node scripts/check-invites-list.mjs",
+    "otkaz": "node scripts/check-otkaz.mjs"
   },
   "dependencies": {
     "@zumer/snapdom": "^2.12.8",

@@ -1,0 +1,168 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>проба отказа загрузки</title>
+<style>body{margin:0;background:#F6F7F9;width:430px}</style></head>
+<body><div id="root"></div>
+<div id="ЗАМЕР"></div>
+<script>
+// ⚠️ СЦЕНАРИЙ ИДЁТ ПО ЭКРАНАМ, ГДЕ ЧЕЛОВЕК СМОТРИТ (T165): Главная, Чеки,
+// Аккаунт. Замер — по ВИДИМОМУ тексту (T169).
+(function(){
+  var шаги=[], ждём=0;
+  var ПАДАЕТ=new URLSearchParams(location.search).get("rezhim")==="padaet";
+  function кнопки(){ return [].slice.call(document.querySelectorAll('button')); }
+  function кнопкаРовно(т){
+    return кнопки().find(function(б){ return (б.textContent||"").trim()===т; });
+  }
+  function видимыйТекст(){
+    var ходок=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var куски=[];
+    while(ходок.nextNode()){
+      var р=ходок.currentNode.parentElement;
+      if(!р || р.tagName==="SCRIPT" || р.tagName==="STYLE") continue;
+      var рект=р.getBoundingClientRect();
+      if(рект.width<=0 || рект.height<=0) continue;
+      куски.push(ходок.currentNode.nodeValue);
+    }
+    return куски.join(" ");
+  }
+  function естьНаЭкране(п){ return видимыйТекст().indexOf(п)>=0; }
+  function сказаноПроОтказ(){
+    return естьНаЭкране("сервер не ответил") &&
+      естьНаЭкране("Это не значит");
+  }
+  // Плашка ОБОЛОЧКИ — та, что перечисляет источники (в ней есть «роль»).
+  // Отличать её от плашек экранов обязательно: без этого мутация «плашку
+  // оболочки не показывают» оставалась зелёной за счёт плашки Главной.
+  function плашкаОболочки(){
+    return [].slice.call(document.querySelectorAll('[role="status"]'))
+      .find(function(э){
+        var т=э.textContent||"";
+        return т.indexOf("сервер не ответил")>=0 && т.indexOf("роль")>=0;
+      });
+  }
+  function повторЕсть(){ return !!кнопкаРовно("Загрузить ещё раз"); }
+
+  var сценарий=[
+    // ⚠️ ГЛАВНОЕ: данные оболочки кормят все экраны, поэтому отказ виден
+    // сразу, а не после перехода куда-то.
+    ["① оболочка говорит об отказе", null, function(){
+        if(!ПАДАЕТ)
+          return сказаноПроОтказ() ? "ГОВОРИТ БЕЗ БЕДЫ" : "молчит, беды нет";
+        return (плашкаОболочки()?"сказано":"МОЛЧИТ")+
+          " · "+(повторЕсть()?"есть повтор":"без повтора");
+      }],
+
+    // ⚠️ СЧИТАЕМ ВНУТРИ САМОЙ ПЛАШКИ, А НЕ ПО ЭКРАНУ. Первая редакция искала
+    // слова во всём видимом тексте и находила «категории» в «Без категории»,
+    // а «чеки» — в подписях интерфейса: мутация «чеки снова глушатся»
+    // оставалась ЗЕЛЁНОЙ. Сторож обязан знать, ГДЕ он нашёл.
+    ["② названо, чего не хватает", null, function(){
+        if(!ПАДАЕТ) return "случай без беды";
+        var плашка=плашкаОболочки();
+        if(!плашка) return "ПЛАШКИ НЕТ";
+        var т=плашка.textContent||"";
+        var есть=["чеки","карты","люди","категории","организация","роль"]
+          .filter(function(с){ return т.indexOf(с)>=0; });
+        return "перечислено: "+есть.length;
+      }],
+
+    // Плитки «Требует внимания» считаются по отчётам: молчание там читается
+    // как «всё спокойно».
+    ["③ Главная про отчёты", null, function(){
+        if(!ПАДАЕТ) return естьНаЭкране("Не удалось загрузить отчёты")
+          ? "ГОВОРИТ БЕЗ БЕДЫ" : "молчит, беды нет";
+        return естьНаЭкране("Не удалось загрузить отчёты")
+          ? "сказано" : "МОЛЧИТ";
+      }],
+
+    ["④ экран «Чеки» не врёт про пустоту", function(){
+        var ч=кнопкаРовно("Чеки"); if(ч) ч.click();
+      }, function(){
+        if(!ПАДАЕТ) return "случай без беды";
+        // Пустой список сам по себе не беда — беда, если о ней не сказано.
+        return сказаноПроОтказ() ? "сказано" : "МОЛЧИТ";
+      }],
+
+    // ⚠️ ДОХОДИМ ДО САМОГО ЭКРАНА, А НЕ ДО ХАБА. Кнопка в шапке открывает
+    // кабинет; карточка профиля — это вкладка «Аккаунт» внутри него, и
+    // мутация «профиль снова молчит» на хабе не видна вовсе.
+    ["⑤ «Аккаунт» не крутит вечную загрузку", function(){
+        var а=document.querySelector('button[aria-label="Аккаунт"]');
+        if(а) а.click();
+        setTimeout(function(){
+          var в=кнопки().find(function(б){
+            return (б.textContent||"").indexOf("Аккаунт")>=0;
+          });
+          if(в) в.click();
+        }, 300);
+      }, function(){
+        if(!ПАДАЕТ)
+          return естьНаЭкране("Загрузка…") ? "ВЕЧНАЯ ЗАГРУЗКА" : "профиль открыт";
+        var крутит=естьНаЭкране("Загрузка…");
+        return (сказаноПроОтказ()?"сказано":"МОЛЧИТ")+
+          (крутит?" · НО КРУТИТ «Загрузка…»":"");
+      }],
+    ["⑥ «Интеграции» не выдают пустоту за список", function(){
+        // Возвращаемся в кабинет: мы стоим внутри вкладки «Аккаунт», и
+        // пунктов кабинета отсюда не видно.
+        var а=document.querySelector('button[aria-label="Аккаунт"]');
+        if(а) а.click();
+        setTimeout(function(){
+          var в=кнопки().find(function(б){
+            return (б.textContent||"").indexOf("Интеграции")>=0;
+          });
+          if(в) в.click();
+        }, 300);
+      }, function(){
+        if(!ПАДАЕТ)
+          return естьНаЭкране("Не удалось загрузить список приложений")
+            ? "ГОВОРИТ БЕЗ БЕДЫ" : "молчит, беды нет";
+        return естьНаЭкране("Не удалось загрузить список приложений")
+          ? "сказано" : "МОЛЧИТ";
+      }],
+    ["⑦ «Организация» не выдаёт пустые реквизиты за правду", function(){
+        var а=document.querySelector('button[aria-label="Аккаунт"]');
+        if(а) а.click();
+        setTimeout(function(){
+          var в=кнопки().find(function(б){
+            return (б.textContent||"").indexOf("Организация")>=0;
+          });
+          if(в) в.click();
+        }, 300);
+      }, function(){
+        var сказано=естьНаЭкране("Не удалось загрузить реквизиты организации");
+        if(!ПАДАЕТ) return сказано ? "ГОВОРИТ БЕЗ БЕДЫ" : "молчит, беды нет";
+        return сказано ? "сказано" : "МОЛЧИТ";
+      }],
+  ];
+
+  function идти(i){
+    if(i>=сценарий.length){
+      document.getElementById("ЗАМЕР").textContent=JSON.stringify(шаги);
+      return;
+    }
+    if(сценарий[i][1]) сценарий[i][1]();
+    setTimeout(function(){
+      var что="—";
+      try { что=сценарий[i][2](); } catch(е){ что="ОШИБКА ЗАМЕРА"; }
+      шаги.push(сценарий[i][0]+": "+что);
+      идти(i+1);
+    }, 800);
+  }
+  function старт(){
+    var готов=function(){
+      return !!document.querySelector('button[aria-label="Аккаунт"]');
+    };
+    if(!готов() && ждём++<80) return setTimeout(старт,150);
+    if(!готов()){
+      document.getElementById("ЗАМЕР").textContent=
+        JSON.stringify({"НЕ_ОТРИСОВАЛОСЬ":true});
+      return;
+    }
+    идти(0);
+  }
+  старт();
+})();
+</script>
+<script type="module" src="./probe.jsx"></script></body></html>

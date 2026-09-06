@@ -38,6 +38,9 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { C, FONT, theme } from "./lib/theme";
+// ⚠️ ОДНА РАЗМЕТКА «сервер не ответил» на всё приложение (T171):
+// третьей копии текста не пишем, см. src/components/LoadFailure.jsx.
+import LoadFailure from "./components/LoadFailure";
 // Словарь категорий — ГЕНЕРИРУЕМЫЙ (источник: app/dictionaries/categories.json
 // в репозитории бэкенда). Руками сюда значения не переписывать: разошлись бы
 // молча, как это уже было (T39).
@@ -4677,6 +4680,9 @@ export function AccountTab({
   const [показатьСогласие, setПоказатьСогласие] = useState(false);
   const [newCard, setNewCard] = useState("");
   const [me, setMe] = useState(null);
+  // T171: пустая карточка человека и «профиль не загрузился» — разные вещи.
+  const [сбойПрофиля, setСбойПрофиля] = useState(false);
+  const [попыткаПрофиля, setПопыткаПрофиля] = useState(0);
   const [acc, setAcc] = useState({
     first_name: "",
     last_name: "",
@@ -4702,9 +4708,11 @@ export function AccountTab({
           setMe(d);
           setAcc(fromApi(d));
         }
+        setСбойПрофиля(false);
       })
-      .catch(() => {});
-  }, []);
+      // ⚠️ Пустая карточка человека читается как «профиль не заполнен» (T171).
+      .catch(() => setСбойПрофиля(true));
+  }, [попыткаПрофиля]);
 
   const set = (k, v) => setAcc((p) => ({ ...p, [k]: v }));
   async function save() {
@@ -4750,16 +4758,26 @@ export function AccountTab({
 
   if (!me)
     return (
-      <div
-        style={{
-          padding: "40px 20px",
-          textAlign: "center",
-          color: theme.fg3,
-          fontFamily: FONT,
-          fontSize: 13,
-        }}
-      >
-        Загрузка…
+      <div style={{ padding: "40px 20px" }}>
+        {/* ⚠️ ВЕЧНАЯ «ЗАГРУЗКА…» — ТОТ ЖЕ КЛАСС, ЧТО ПУСТОЙ CATCH (T171):
+            при отказе экран крутился бесконечно и не говорил ничего. */}
+        {сбойПрофиля ? (
+          <LoadFailure
+            что="ваш профиль"
+            onRetry={() => setПопыткаПрофиля((н) => н + 1)}
+          />
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              color: theme.fg3,
+              fontFamily: FONT,
+              fontSize: 13,
+            }}
+          >
+            Загрузка…
+          </div>
+        )}
       </div>
     );
 
@@ -6936,9 +6954,15 @@ export function ProfileHub({ role, me, onOpen, onLogout }) {
 // переписывает T104 (одна кнопка «Пригласить» вместо двух, статус
 // «приглашён, ожидает»). Двигать 126 строк за день до переписывания —
 // шум в diff и лишний повод для конфликта.
-export function ServicesTab({ servicesList }) {
+export function ServicesTab({ servicesList, сбойУслуг, onRetry }) {
   return (
     <div style={{ padding: "12px 16px 80px" }}>
+      {/* ⚠️ Пустой список читается как «других приложений нет» (T171). */}
+      {сбойУслуг && (
+        <div style={{ marginBottom: 12 }}>
+          <LoadFailure что="список приложений" onRetry={onRetry} />
+        </div>
+      )}
       {/* ⚠️ Заголовка нет: экран уже назван «Интеграции» в шапке.
           Четвёртый дубль того же класса — и первый, который нашёл
           ПРИБОР, а не владелец глазами. */}
@@ -7045,6 +7069,9 @@ export function NastroykiPage({
 
   const [resentToken, setResentToken] = useState(null);
   const [ошибкаПриглашений, setОшибкаПриглашений] = useState("");
+  // T171: пустой переключатель приложений и «список услуг не пришёл».
+  const [сбойУслуг, setСбойУслуг] = useState(false);
+  const [попыткаУслуг, setПопыткаУслуг] = useState(0);
 
   // ⚠️ «СПИСОК ПУСТ» И «СПИСОК НЕ ЗАГРУЗИЛСЯ» — РАЗНЫЕ ВЕЩИ (класс T169, тот же
   // случай, что чинили на экране входа по ссылке). Отказ молча превращался в
@@ -7221,10 +7248,20 @@ export function NastroykiPage({
     </div>
   );
 
+  // ⚠️ ДЕЙСТВИЕ, А НЕ ЗАГРУЗКА (класс T116): «Отозвать» молча ничего не
+  // делало при отказе — ссылка оставалась живой, а человек считал её
+  // погашенной и переставал следить за ней.
   const delInvite = (token) =>
     authFetch(`/api/invite/${token}`, { method: "DELETE" })
-      .then(() => loadInvites())
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) throw new Error("отказ");
+        return loadInvites();
+      })
+      .catch(() =>
+        setОшибкаПриглашений(
+          "Не удалось отозвать приглашение — ссылка осталась рабочей. Попробуйте ещё раз",
+        ),
+      );
   const copyInvite = async (inv) => {
     setОшибкаПриглашений("");
     try {
@@ -7265,10 +7302,14 @@ export function NastroykiPage({
   useEffect(() => {
     authFetch(`/api/services/`)
       .then((r) => r.json())
-      .then((d) => setServicesList(Array.isArray(d) ? d : []))
-      .catch(() => {});
+      .then((d) => {
+        setServicesList(Array.isArray(d) ? d : []);
+        setСбойУслуг(false);
+      })
+      // ⚠️ Пустой список приложений выглядит как «других приложений нет» (T171).
+      .catch(() => setСбойУслуг(true));
     loadInvites();
-  }, []);
+  }, [попыткаУслуг]);
 
   // ⚠️ Считаем здесь, а не в строке: иначе счёт шёл бы на каждую строку
   // списка. Бэкенд остаётся хозяином правила — фронт лишь не предлагает
@@ -7492,7 +7533,13 @@ export function NastroykiPage({
           </div>
         </div>
       )}
-      {tab === "Интеграции" && <ServicesTab servicesList={servicesList} />}
+      {tab === "Интеграции" && (
+        <ServicesTab
+          servicesList={servicesList}
+          сбойУслуг={сбойУслуг}
+          onRetry={() => setПопыткаУслуг((н) => н + 1)}
+        />
+      )}
       {tab === "Категории" && (
         <CategoriesTab
           role={role}
@@ -9935,6 +9982,18 @@ export default function App() {
   );
 
   useEffect(() => () => clearTimeout(undoTimer.current), []);
+  // ⚠️ ОДНО МЕСТО, ГДЕ ЗАПОМИНАЕТСЯ ОТКАЗ ЗАГРУЗКИ (T171, 06.09.2026).
+  // Загрузчики оболочки глушили отказ пустым `catch`, состояние оставалось
+  // пустым, и экран говорил «данных нет» — человек шёл делать лишнюю работу.
+  // Ключ на каждый источник: экран показывает беду там, где она видна ему.
+  const [сбоиЗагрузки, setСбоиЗагрузки] = useState({});
+  // Счётчик попыток: кнопка «Загрузить ещё раз» просто крутит его, и эффект
+  // загрузки идёт заново — одно место повтора вместо копии запросов рядом.
+  const [попыткаЗагрузки, setПопыткаЗагрузки] = useState(0);
+  const пометитьСбой = useCallback(
+    (ключ, плохо) => setСбоиЗагрузки((п) => ({ ...п, [ключ]: плохо })),
+    [],
+  );
   const [receipts, setReceipts] = useState([]);
   const [cards, setCards] = useState([]);
   const [users, setUsers] = useState([]);
@@ -10039,9 +10098,10 @@ export default function App() {
       .then((data) => {
         setCatalogMaps(data);
         setCatalog(data && Array.isArray(data.groups) ? data : { groups: [] });
+        пометитьСбой("категории", false);
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => пометитьСбой("категории", true));
+  }, [пометитьСбой]);
 
   // ⚠️ ПЕРЕЧИТЫВАЕМ ПРИ СМЕНЕ ЭКРАНА, А НЕ ПО ТАЙМЕРУ. События рождаются
   // редко (отчёт одобрили, отклонили, прислали на проверку), а опрос каждые
@@ -10061,24 +10121,35 @@ export default function App() {
   // consent screen network-quiet, and re-runs the moment they accept.
   useEffect(() => {
     if (!consentGiven || !authed) return;
+    // ⚠️ «ЧЕКОВ НЕТ» ПРИ 88 ЧЕКАХ — так выглядел отказ этого запроса.
     authFetch(`/api/receipts/`)
       .then((r) => r.json())
-      .then((data) =>
+      .then((data) => {
         setReceipts(
           Array.isArray(data)
             ? data.map((r) => ({ ...r, amount: Number(r.amount) }))
             : [],
-        ),
-      )
-      .catch(() => {});
+        );
+        пометитьСбой("чеки", false);
+      })
+      .catch(() => пометитьСбой("чеки", true));
     authFetch(`/api/cards/`)
       .then((r) => r.json())
-      .then((data) => setCards(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .then((data) => {
+        setCards(Array.isArray(data) ? data : []);
+        пометитьСбой("карты", false);
+      })
+      .catch(() => пометитьСбой("карты", true));
+    // ⚠️ ЭТО ТОТ САМЫЙ ЗАГРУЗЧИК ЛЮДЕЙ (T171). Отказ здесь гасит имена ВЕЗДЕ:
+    // «Автор не указан» в чеках, пустой фильтр «Сотрудник», пустой список
+    // сотрудников — и всё это выглядит как правда о данных.
     authFetch(`/api/users/`)
       .then((r) => r.json())
-      .then((data) => setUsers(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .then((data) => {
+        setUsers(Array.isArray(data) ? data : []);
+        пометитьСбой("люди", false);
+      })
+      .catch(() => пометитьСбой("люди", true));
     loadCatalog(); // D1: каталог категорий (группы+статьи)
     authFetch(`/api/users/me`) // D2: роль текущего юзера для гейта управления категориями
       .then((r) => (r.ok ? r.json() : null))
@@ -10101,15 +10172,21 @@ export default function App() {
             })
             .catch(() => {}); // сеть упала — ворота не трогаем
         }
+        // Роль пришла — значит гейты закрыты по праву, а не по молчанию.
+        пометитьСбой("роль", !data);
       })
-      .catch(() => {});
+      // ⚠️ САМОЕ ДОРОГОЕ МЕСТО ИЗ ВСЕХ: без роли гейты закрываются, и человек
+      // видит урезанное приложение — читает это как «у меня отняли права» и
+      // идёт выяснять к администратору. Отказ обязан назвать себя.
+      .catch(() => пометитьСбой("роль", true));
     authFetch(`/api/organizations/me`) // INT: режим налогообложения для Сводки/Главной
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && data.id) setOrg(data);
+        пометитьСбой("организация", false);
       })
-      .catch(() => {});
-  }, [consentGiven, authed, loadCatalog]);
+      .catch(() => пометитьСбой("организация", true));
+  }, [consentGiven, authed, loadCatalog, пометитьСбой, попыткаЗагрузки]);
 
   // ⚠️ ОТКАЗ СЕРВЕРА ГОВОРИТ ЧЕЛОВЕКУ, А НЕ ПРОПАДАЕТ (Р-ОТКАЗЫ, T116).
   // Замер 04.09.2026: справочники карт и людей молчали при любом отказе —
@@ -10708,6 +10785,22 @@ export default function App() {
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* ⚠️ ОТКАЗ ЗАГРУЗКИ ВИДЕН НА ЛЮБОМ ЭКРАНЕ (T171). Данные оболочки
+          кормят все экраны сразу: не пришли люди — исчезли имена авторов,
+          не пришла роль — закрылись гейты, и человек читает это как правду
+          о своих правах. Поэтому плашка стоит под шапкой, а не внутри
+          одного экрана, и перечисляет ИМЕННО ТО, чего не хватает. */}
+      {Object.values(сбоиЗагрузки).some(Boolean) && (
+        <div style={{ padding: "8px 12px 0" }}>
+          <LoadFailure
+            что={Object.keys(сбоиЗагрузки)
+              .filter((к) => сбоиЗагрузки[к])
+              .join(", ")}
+            onRetry={() => setПопыткаЗагрузки((н) => н + 1)}
+          />
         </div>
       )}
 

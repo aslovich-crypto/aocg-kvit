@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import LoadFailure from "../components/LoadFailure";
 import {
   Search,
   X,
@@ -79,12 +80,25 @@ export default function GlavnayaPage({
     return () => clearTimeout(т);
   }, [запрос, authFetch]);
   const режимПоиска = запрос.trim().length >= 2;
+  // ⚠️ «ОТЧЁТОВ НЕТ» И «ОТЧЁТЫ НЕ ЗАГРУЗИЛИСЬ» — РАЗНЫЕ ВЕЩИ (T171). Плитки
+  // «Требует внимания» считаются по этому списку: пустой ответ от отказа
+  // неотличим, и человек видит спокойный экран там, где на проверке висят
+  // его отчёты.
+  const [сбойОтчётов, setСбойОтчётов] = useState(false);
+  const загрузитьОтчёты = useCallback(
+    () =>
+      authFetch("/api/reports/")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("отказ"))))
+        .then((d) => {
+          setReports(Array.isArray(d) ? d : []);
+          setСбойОтчётов(false);
+        })
+        .catch(() => setСбойОтчётов(true)),
+    [authFetch],
+  );
   useEffect(() => {
-    authFetch("/api/reports/")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setReports(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, [authFetch]);
+    загрузитьОтчёты();
+  }, [загрузитьОтчёты]);
 
   const monthReceipts = receipts.filter((r) => inPeriod(r.date, "month"));
   const monthTotal = monthReceipts.reduce((s, r) => s + Number(r.amount), 0);
@@ -314,7 +328,7 @@ export default function GlavnayaPage({
             /* T144-эталон 40: прошивка input даёт 1px/1px — обнулено */
             padding: 0,
             /* T138: кегль 16 (Safari не зумит), строка ФИКСОМ 18px — полоса остаётся 40 */
-                font: `400 16px/18px ${FONT}`,
+            font: `400 16px/18px ${FONT}`,
             color: theme.fg1,
           }}
         />
@@ -492,28 +506,34 @@ export default function GlavnayaPage({
       )}
 
       {!режимПоиска && (
-      <div>
-
-      {/* Быстрые действия */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-          marginBottom: 22,
-        }}
-      >
-        {/* Прямые действия (03.09.2026): человек нажал «Сканировать» —
+        <div>
+          {/* Быстрые действия */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              marginBottom: 22,
+            }}
+          >
+            {/* Прямые действия (03.09.2026): человек нажал «Сканировать» —
             он хочет сканировать, а не смотреть список. Класс «названо
             действием — делает переход» этой правкой исчерпан: живых 2 → 0. */}
-        {quick(ScanLine, "Сканировать чек", onScan)}
-        {quick(FileText, "Создать отчёт", onNewReport)}
-      </div>
+            {quick(ScanLine, "Сканировать чек", onScan)}
+            {quick(FileText, "Создать отчёт", onNewReport)}
+          </div>
 
-      {/* Требует внимания */}
-      <div style={{ marginBottom: 22 }}>
-        {secTitle("Требует внимания")}
-        {/* ТРИ ПЛИТКИ В РЯД НЕ ПОМЕЩАЮТСЯ ПРИ 320. Замер: плитка 88.7px,
+          {/* Требует внимания */}
+          <div style={{ marginBottom: 22 }}>
+            {secTitle("Требует внимания")}
+            {/* ⚠️ Плитки считаются по списку отчётов: не загрузился — говорим
+            об этом здесь, где человек делает вывод «всё спокойно». */}
+            {сбойОтчётов && (
+              <div style={{ marginBottom: 10 }}>
+                <LoadFailure что="отчёты" onRetry={загрузитьОтчёты} />
+              </div>
+            )}
+            {/* ТРИ ПЛИТКИ В РЯД НЕ ПОМЕЩАЮТСЯ ПРИ 320. Замер: плитка 88.7px,
             внутри после отступов остаётся 62.7, а «10 780,00 ₽» занимает
             65.9 — сумма торчала на 3px, и это НЕ косметика: она растёт
             с суммой, при шестизначной вылезет на 20+.
@@ -522,192 +542,196 @@ export default function GlavnayaPage({
             многоточием не режут, их либо видно целиком, либо нет.
             auto-fit разворачивает ряд по месту: при 320 плиток в ряду две
             (139px каждая), при 360 и шире — снова три, как в макете. */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
-            gap: 10,
-          }}
-        >
-          {attn(
-            Tag,
-            "#B45309",
-            noCat.length,
-            `${plural(noCat.length, ["чек", "чека", "чеков"])} без категории`,
-            "Сумма",
-            money(noCatSum),
-            () => setPage("operacii"),
-          )}
-          {attn(
-            CircleX,
-            "#B91C1C",
-            rejected.length,
-            `${plural(rejected.length, [
-              "отчёт",
-              "отчёта",
-              "отчётов",
-            ])} отклонён`,
-            "Период",
-            rejected.length ? reportMonth(rejected[0]) : "—",
-            () => setPage("otchety"),
-          )}
-          {attn(
-            Clock,
-            "#B45309",
-            pending.length,
-            `${plural(pending.length, [
-              "отчёт",
-              "отчёта",
-              "отчётов",
-            ])} на проверке`,
-            "Сумма",
-            money(pendingSum),
-            () => setPage("otchety"),
-          )}
-        </div>
-      </div>
-
-      {/* За месяц */}
-      <div style={{ marginBottom: 22 }}>
-        {secTitle("За месяц")}
-        <button
-          onClick={() => setPage("svodka")}
-          style={{
-            ...card,
-            ...tap,
-            width: "100%",
-            padding: 16,
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            textAlign: "left",
-          }}
-        >
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span
+            <div
               style={{
-                display: "block",
-                font: `400 13px/1.3 ${FONT}`,
-                color: theme.fg2,
-                marginBottom: 4,
-              }}
-            >
-              Расходы, {monthName}
-            </span>
-            <span
-              style={{
-                display: "block",
-                font: `700 26px/1.05 ${FONT}`,
-                color: "#111318",
-                fontVariantNumeric: "tabular-nums",
-                letterSpacing: "-.015em",
-              }}
-            >
-              {money(monthTotal)}
-            </span>
-            <span
-              style={{
-                display: "block",
-                font: `400 13px/1.3 ${FONT}`,
-                color: theme.fg2,
-                marginTop: 4,
-              }}
-            >
-              {monthReceipts.length}{" "}
-              {plural(monthReceipts.length, [
-                "операция",
-                "операции",
-                "операций",
-              ])}
-            </span>
-          </span>
-          <ChevronRight size={22} color={theme.fg3} strokeWidth={2} />
-        </button>
-      </div>
-
-      {/* Налоговый учёт — мини, только для режимов с учётом расходов */}
-      {org && reducesExpenses && (
-        <div style={{ marginBottom: 22 }}>
-          {secTitle("Налоговый учёт расходов")}
-          <button
-            onClick={() => setPage("svodka")}
-            style={{
-              ...card,
-              ...tap,
-              width: "100%",
-              padding: 16,
-              textAlign: "left",
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                height: 12,
-                borderRadius: 999,
-                overflow: "hidden",
-                gap: 2,
-              }}
-            >
-              <span
-                style={{
-                  flex: `0 0 ${
-                    taxTotal > 0 ? (deductible / taxTotal) * 100 : 0
-                  }%`,
-                  background: "#15803D",
-                }}
-              />
-              <span
-                style={{
-                  flex: `0 0 ${
-                    taxTotal > 0 ? (nonDeductible / taxTotal) * 100 : 0
-                  }%`,
-                  background: "#9CA3AF",
-                }}
-              />
-            </span>
-            <span
-              style={{
-                marginTop: 14,
-                display: "flex",
-                flexDirection: "column",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
                 gap: 10,
               }}
             >
-              {taxRow(
-                "#15803D",
-                "Можно учесть в расходах",
-                deductible,
-                "#15803D",
+              {attn(
+                Tag,
+                "#B45309",
+                noCat.length,
+                `${plural(noCat.length, [
+                  "чек",
+                  "чека",
+                  "чеков",
+                ])} без категории`,
+                "Сумма",
+                money(noCatSum),
+                () => setPage("operacii"),
               )}
-              {taxRow("#9CA3AF", "Нельзя учесть", nonDeductible)}
-            </span>
-          </button>
-        </div>
-      )}
+              {attn(
+                CircleX,
+                "#B91C1C",
+                rejected.length,
+                `${plural(rejected.length, [
+                  "отчёт",
+                  "отчёта",
+                  "отчётов",
+                ])} отклонён`,
+                "Период",
+                rejected.length ? reportMonth(rejected[0]) : "—",
+                () => setPage("otchety"),
+              )}
+              {attn(
+                Clock,
+                "#B45309",
+                pending.length,
+                `${plural(pending.length, [
+                  "отчёт",
+                  "отчёта",
+                  "отчётов",
+                ])} на проверке`,
+                "Сумма",
+                money(pendingSum),
+                () => setPage("otchety"),
+              )}
+            </div>
+          </div>
 
-      {/* Последние */}
-      <div>
-        {secTitle("Последние", "Все чеки", () => setPage("operacii"))}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {recent.map((r) => {
-            const pill = catColor(catName(r)) || {};
-            return (
+          {/* За месяц */}
+          <div style={{ marginBottom: 22 }}>
+            {secTitle("За месяц")}
+            <button
+              onClick={() => setPage("svodka")}
+              style={{
+                ...card,
+                ...tap,
+                width: "100%",
+                padding: 16,
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                textAlign: "left",
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    font: `400 13px/1.3 ${FONT}`,
+                    color: theme.fg2,
+                    marginBottom: 4,
+                  }}
+                >
+                  Расходы, {monthName}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    font: `700 26px/1.05 ${FONT}`,
+                    color: "#111318",
+                    fontVariantNumeric: "tabular-nums",
+                    letterSpacing: "-.015em",
+                  }}
+                >
+                  {money(monthTotal)}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    font: `400 13px/1.3 ${FONT}`,
+                    color: theme.fg2,
+                    marginTop: 4,
+                  }}
+                >
+                  {monthReceipts.length}{" "}
+                  {plural(monthReceipts.length, [
+                    "операция",
+                    "операции",
+                    "операций",
+                  ])}
+                </span>
+              </span>
+              <ChevronRight size={22} color={theme.fg3} strokeWidth={2} />
+            </button>
+          </div>
+
+          {/* Налоговый учёт — мини, только для режимов с учётом расходов */}
+          {org && reducesExpenses && (
+            <div style={{ marginBottom: 22 }}>
+              {secTitle("Налоговый учёт расходов")}
               <button
-                key={r.id}
-                onClick={() => setPage("operacii")}
+                onClick={() => setPage("svodka")}
                 style={{
                   ...card,
                   ...tap,
-                  padding: "14px 16px",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 12,
+                  width: "100%",
+                  padding: 16,
                   textAlign: "left",
-                  boxShadow: "0 1px 3px rgba(17,19,24,.08)",
                 }}
               >
-                {/* ПОЛ ЛЕВОЙ КОЛОНКИ — 152px. Число выведено из содержимого,
+                <span
+                  style={{
+                    display: "flex",
+                    height: 12,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    gap: 2,
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: `0 0 ${
+                        taxTotal > 0 ? (deductible / taxTotal) * 100 : 0
+                      }%`,
+                      background: "#15803D",
+                    }}
+                  />
+                  <span
+                    style={{
+                      flex: `0 0 ${
+                        taxTotal > 0 ? (nonDeductible / taxTotal) * 100 : 0
+                      }%`,
+                      background: "#9CA3AF",
+                    }}
+                  />
+                </span>
+                <span
+                  style={{
+                    marginTop: 14,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  {taxRow(
+                    "#15803D",
+                    "Можно учесть в расходах",
+                    deductible,
+                    "#15803D",
+                  )}
+                  {taxRow("#9CA3AF", "Нельзя учесть", nonDeductible)}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Последние */}
+          <div>
+            {secTitle("Последние", "Все чеки", () => setPage("operacii"))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {recent.map((r) => {
+                const pill = catColor(catName(r)) || {};
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => setPage("operacii")}
+                    style={{
+                      ...card,
+                      ...tap,
+                      padding: "14px 16px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      textAlign: "left",
+                      boxShadow: "0 1px 3px rgba(17,19,24,.08)",
+                    }}
+                  >
+                    {/* ПОЛ ЛЕВОЙ КОЛОНКИ — 152px. Число выведено из содержимого,
                     а не подобрано на глаз: дата «02.08.2026» 74px + точка 3
                     + два отступа 12 = 89.4px неприкосновенных (дата не уступает
                     никогда), плюс иконка карты 14 и её отступ 4, плюс ширина
@@ -737,133 +761,133 @@ export default function GlavnayaPage({
                     она теперь сжимается с многоточием, а не давит соседа.
                     На 430 не меняется НИЧЕГО — там колонке и так достаётся
                     159px, пол не срабатывает. */}
-                <span style={{ flex: 1, minWidth: 152 }}>
-                  <span
-                    style={{
-                      display: "block",
-                      font: `500 15px/1.25 ${FONT}`,
-                      color: "#111318",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {/* shortOrg: до 06.08.2026 здесь стояло сырое r.org, и
+                    <span style={{ flex: 1, minWidth: 152 }}>
+                      <span
+                        style={{
+                          display: "block",
+                          font: `500 15px/1.25 ${FONT}`,
+                          color: "#111318",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {/* shortOrg: до 06.08.2026 здесь стояло сырое r.org, и
                         строка читалась как «ОБЩЕСТВО С ОГР…». На «Чеках»
                         сокращение было, на «Главной» — нет. */}
-                    {shortOrg(r.org)}
-                  </span>
-                  <span
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      marginTop: 4,
-                      font: `400 13px/1.2 ${FONT}`,
-                      color: theme.fg2,
-                      fontVariantNumeric: "tabular-nums",
-                      minWidth: 0,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span style={{ flexShrink: 0 }}>{fmtDate(r.date)}</span>
-                    <span
-                      style={{
-                        width: 3,
-                        height: 3,
-                        borderRadius: "50%",
-                        background: theme.fg3,
-                        flexShrink: 0,
-                      }}
-                    />
-                    {/* Оплата уступает ПЕРВОЙ и многоточием — как на «Чеках».
+                        {shortOrg(r.org)}
+                      </span>
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          marginTop: 4,
+                          font: `400 13px/1.2 ${FONT}`,
+                          color: theme.fg2,
+                          fontVariantNumeric: "tabular-nums",
+                          minWidth: 0,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span style={{ flexShrink: 0 }}>{fmtDate(r.date)}</span>
+                        <span
+                          style={{
+                            width: 3,
+                            height: 3,
+                            borderRadius: "50%",
+                            background: theme.fg3,
+                            flexShrink: 0,
+                          }}
+                        />
+                        {/* Оплата уступает ПЕРВОЙ и многоточием — как на «Чеках».
                         Текст вынесен в отдельный span: многоточие работает
                         в блочном боксе, а на анонимном flex-элементе рядом
                         с иконкой оно не применилось бы вовсе. */}
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        minWidth: 0,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <CreditCard
-                        size={14}
-                        color={theme.fg2}
-                        strokeWidth={2}
-                        style={{ flexShrink: 0 }}
-                      />
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          minWidth: 0,
-                        }}
-                      >
-                        {paymentShort(r)}
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            minWidth: 0,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <CreditCard
+                            size={14}
+                            color={theme.fg2}
+                            strokeWidth={2}
+                            style={{ flexShrink: 0 }}
+                          />
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              minWidth: 0,
+                            }}
+                          >
+                            {paymentShort(r)}
+                          </span>
+                        </span>
                       </span>
                     </span>
-                  </span>
-                </span>
-                {/* Правая колонка БОЛЬШЕ не «не сжимаемая»: именно flexShrink:0
+                    {/* Правая колонка БОЛЬШЕ не «не сжимаемая»: именно flexShrink:0
                     при длинной категории съедал левую колонку до 46.9px.
                     Сжимается она только когда левая упёрлась в свой пол —
                     сумме при 320 остаётся 94px при нужных 82. */}
-                <span
+                    <span
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: 7,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          font: `600 15px/1.2 ${FONT}`,
+                          color: "#111318",
+                          fontVariantNumeric: "tabular-nums",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {money(Number(r.amount))}
+                      </span>
+                      <span
+                        style={{
+                          font: `500 12px/1 ${FONT}`,
+                          padding: "5px 10px",
+                          borderRadius: 999,
+                          background: pill.bg || theme.surfaceSunk,
+                          color: pill.fg || theme.fg2,
+                          whiteSpace: "nowrap",
+                          maxWidth: "100%",
+                          boxSizing: "border-box",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {catName(r)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+              {recent.length === 0 && (
+                <div
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-end",
-                    gap: 7,
-                    minWidth: 0,
+                    font: `400 13px/1.4 ${FONT}`,
+                    color: theme.fg3,
+                    padding: "8px 0",
                   }}
                 >
-                  <span
-                    style={{
-                      font: `600 15px/1.2 ${FONT}`,
-                      color: "#111318",
-                      fontVariantNumeric: "tabular-nums",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {money(Number(r.amount))}
-                  </span>
-                  <span
-                    style={{
-                      font: `500 12px/1 ${FONT}`,
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      background: pill.bg || theme.surfaceSunk,
-                      color: pill.fg || theme.fg2,
-                      whiteSpace: "nowrap",
-                      maxWidth: "100%",
-                      boxSizing: "border-box",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {catName(r)}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-          {recent.length === 0 && (
-            <div
-              style={{
-                font: `400 13px/1.4 ${FONT}`,
-                color: theme.fg3,
-                padding: "8px 0",
-              }}
-            >
-              Пока нет чеков
+                  Пока нет чеков
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
-      </div>
       )}
     </div>
   );

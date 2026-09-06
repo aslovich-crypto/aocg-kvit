@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import LoadFailure from "../components/LoadFailure";
 import { C, FONT, theme } from "../lib/theme";
 
 // Вкладка «Организация» в Настройках (задача #1, фронт).
@@ -30,6 +31,9 @@ function extractErr(e) {
 }
 
 export default function OrganizationTab({ authFetch, role, Btn, fmtDate }) {
+  // T171: «реквизиты пусты» и «реквизиты не загрузились» — разные вещи.
+  const [сбойЗагрузки, setСбойЗагрузки] = useState(false);
+  const [попытка, setПопытка] = useState(0);
   const [org, setOrg] = useState(null);
   const [form, setForm] = useState({ name: "", inn: "", tax_system: "" });
   const [saved, setSaved] = useState(false);
@@ -51,9 +55,12 @@ export default function OrganizationTab({ authFetch, role, Btn, fmtDate }) {
           setOrg(d);
           setForm(fromApi(d));
         }
+        setСбойЗагрузки(false);
       })
-      .catch(() => {});
-  }, [authFetch]);
+      // ⚠️ Пустые реквизиты и «не загрузились» выглядели одинаково (T171):
+      // человек начинал заполнять форму заново поверх существующих данных.
+      .catch(() => setСбойЗагрузки(true));
+  }, [authFetch, попытка]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -95,7 +102,14 @@ export default function OrganizationTab({ authFetch, role, Btn, fmtDate }) {
   }
 
   if (!org)
-    return (
+    return сбойЗагрузки ? (
+      <div style={{ padding: "20px" }}>
+        <LoadFailure
+          что="реквизиты организации"
+          onRetry={() => setПопытка((н) => н + 1)}
+        />
+      </div>
+    ) : (
       <div
         style={{
           padding: "40px 20px",
@@ -129,7 +143,7 @@ export default function OrganizationTab({ authFetch, role, Btn, fmtDate }) {
     textAlign: "right",
     border: "none",
     background: "transparent",
-    fontSize: 16  /* T138 */,
+    fontSize: 16 /* T138 */,
     color: C.dark,
     fontFamily: FONT,
     outline: "none",

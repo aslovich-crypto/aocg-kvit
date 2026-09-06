@@ -97,10 +97,14 @@ const ответ = (status, тело) => ({
   text: () => Promise.resolve(JSON.stringify(тело)),
 });
 
-window.fetch = (u) => {
+window.fetch = (u, opts = {}) => {
   const путь = String(u)
     .replace(/^https?:\/\/[^/]+/, "")
     .split("?")[0];
+  // ⚠️ «Отозвать» — ДЕЙСТВИЕ, а не загрузка (класс T116): при отказе ссылка
+  // остаётся рабочей, и человек обязан об этом узнать.
+  if (СЛУЧАЙ === "otzyv" && (opts.method || "GET") === "DELETE")
+    return Promise.resolve(ответ(500, { detail: "Внутренняя ошибка" }));
   if (путь === "/api/invite/list") {
     if (СЛУЧАЙ === "sboy") return Promise.reject(new Error("нет связи"));
     if (СЛУЧАЙ === "pusto")

@@ -12,3 +12,4 @@ dist/
 # «копия совпадает с источником» в «копия совпадает с нашим prettier».
 public/fonts/
 scripts/probe-summa/__dist/
+scripts/probe-geroy/__dist/

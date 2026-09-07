@@ -1039,13 +1039,33 @@ export default function ReceiptDetailModal({
                     textAlign: "left",
                   }}
                 >
+                  {/* ⚠️ ЗАГОЛОВОК — ДВЕ СТРОКИ, А НЕ МНОГОТОЧИЕ (UX-26).
+                      Правило взято из КРАЕВОГО макета
+                      `compare/Длинное название - деталь чека.html`, где оно
+                      записано для длинных названий; основной макет даёт одну
+                      строку, и код следовал ему. Замер владельца 06.09.2026:
+                      «ООО «Виза менеджмент сер…»» — название нельзя дочитать,
+                      а это первое, чем человек узнаёт чек.
+                      ⚠️ `overflow-wrap: anywhere` — из того же макета, дословно
+                      («let the long compound word fill line 1 instead of
+                      orphaning «ООО»»): без него длинное слово переносится
+                      целиком и первая строка остаётся почти пустой.
+                      ⚠️ ПОДПИСЬ НИЖЕ ОСТАЁТСЯ ОДНОСТРОЧНОЙ — решение владельца
+                      07.09.2026: заголовок человек ищет глазами первым, там
+                      обрезка мешает узнать чек; юрлицо — уточнение, его
+                      обрезка терпима. В краевом макете `.legal` тоже nowrap.
+                      Стережёт `npm run geroy`, шаг ⑦. */}
                   <div
                     style={{
                       font: `600 18px/1.25 ${FONT}`,
                       color: T.fg1,
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: 2,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      overflowWrap: "anywhere",
+                      hyphens: "auto",
                     }}
                   >
                     {mname}

@@ -27,12 +27,21 @@ function прогнать(сторож) {
 }
 
 // Мутация = список правок [файл, было, стало]; применяем, мерим, откатываем.
+//
+// ⚠️ ЦЕЛЬ ЗАДАЁТСЯ РЕГУЛЯРКОЙ, А НЕ КУСКОМ ТЕКСТА С ПЕРЕНОСАМИ, И ЭТО
+// КУПЛЕНО ОШИБКОЙ 08.09.2026. Первая редакция искала многострочный литерал
+// массива — pre-commit прогнал prettier, тот сжал шестикодовый набор в одну
+// строку (семикодовый не влез и остался в столбик), и М5 с М6 доложили
+// «ЦЕЛЬ НЕ НАЙДЕНА»: 5 из 5 стало 3 из 5 без единой правки сторожей.
+// Ровно об этом предупреждает шапка tools/gen_dictionaries.py — там то же
+// случилось с M1 10.08.2026. Мутация обязана целиться в СМЫСЛ.
 function мутация(имя, правки, ждём) {
   const снимки = правки.map(([о]) => [ф(о), readFileSync(ф(о), "utf8")]);
   try {
     for (const [о, было, стало] of правки) {
       const т = readFileSync(ф(о), "utf8");
-      if (!т.includes(было)) throw new Error(`ЦЕЛЬ НЕ НАЙДЕНА в ${о}`);
+      const есть = было instanceof RegExp ? было.test(т) : т.includes(было);
+      if (!есть) throw new Error(`ЦЕЛЬ НЕ НАЙДЕНА в ${о}`);
       writeFileSync(ф(о), т.replace(было, стало));
     }
     const факт = { орг: прогнать(ОРГ), чек: прогнать(ЧЕК) };
@@ -79,7 +88,7 @@ const итоги = [
   // порождение вырождается в обычный файл, который «кто-то помнит».
   мутация(
     "М5 штамп не пересчитан при смене источника",
-    [["src/lib/tax_systems.js", '  "psn",', '  "patent",']],
+    [["src/lib/tax_systems.js", '"psn"', '"patent"']],
     { орг: "красный", чек: "зелёный" },
   ),
   // М6 ГЛАВНАЯ: наборы перепутаны местами — ровно то, чего опасался владелец,
@@ -90,13 +99,13 @@ const итоги = [
     [
       [
         "src/lib/tax_systems.js",
-        '"eshn",\n  "npd",\n  "osno",\n  "psn",\n  "usn_d",\n  "usn_dr",',
-        '"osno",\n  "usn_income",\n  "usn_income_minus_expense",\n  "envd",\n  "eshn",\n  "psn",\n  "npd",',
+        /(export const TAX_SYSTEMS = )\[[\s\S]*?\];/,
+        '$1["osno", "usn_income", "usn_income_minus_expense", "envd", "eshn", "psn", "npd"];',
       ],
       [
         "src/lib/fns_tax_codes.js",
-        '"osno",\n  "usn_income",\n  "usn_income_minus_expense",\n  "envd",\n  "eshn",\n  "psn",\n  "npd",',
-        '"eshn",\n  "npd",\n  "osno",\n  "psn",\n  "usn_d",\n  "usn_dr",',
+        /(export const FNS_TAX_CODES = )\[[\s\S]*?\];/,
+        '$1["eshn", "npd", "osno", "psn", "usn_d", "usn_dr"];',
       ],
     ],
     { орг: "красный", чек: "красный" },

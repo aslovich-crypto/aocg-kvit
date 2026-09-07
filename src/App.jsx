@@ -73,7 +73,7 @@ import ReceiptDetailModal, {
   ConfirmDeleteSheet,
 } from "./components/ReceiptDetailModal";
 import LegalText from "./components/LegalText";
-import { идПоИмени, имяАвтора } from "./lib/people";
+import { идПоИмени, имяАвтора, полноеИмя } from "./lib/people";
 // S-28: тот же предикат роли, что уже гейтит фильтр автора на «Отчётах».
 // Вторая копия условия разошлась бы с первой при следующей правке ролей.
 import { canApprove } from "./lib/reports";
@@ -1606,8 +1606,6 @@ function FiltersModal({
     gap: 6,
   });
 
-  const empName = (u) =>
-    `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email || "—";
   const cardNames = hasCards ? cards.map((c) => c.name).concat("Наличные") : [];
 
   const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
@@ -1851,7 +1849,7 @@ function FiltersModal({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {[
                   ["Все сотрудники", null],
-                  ...employees.map((u) => [empName(u), empName(u)]),
+                  ...employees.map((u) => [полноеИмя(u), полноеИмя(u)]),
                 ].map(([label, val]) => (
                   <button
                     key={val || "all"}

@@ -25,7 +25,8 @@
     "summa": "node scripts/check-summa.mjs",
     "summa-mut": "node scripts/summa-mutations.mjs",
     "geroy": "node scripts/check-geroy.mjs",
-    "geroy-mut": "node scripts/geroy-mutations.mjs"
+    "geroy-mut": "node scripts/geroy-mutations.mjs",
+    "author-mut": "node scripts/author-mutations.mjs"
   },
   "dependencies": {
     "@zumer/snapdom": "^2.12.8",

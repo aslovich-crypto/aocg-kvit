@@ -27,6 +27,17 @@ body{width:320px;height:568px;overflow:hidden}
 // свайп-передок, App.jsx:1329), мета-строка — по кеглю 13px внутри неё.
 (function(){
   var ждём=0;
+  // ⚠️ МОЛЧАНИЕ ПРОБЫ — НЕ ОТВЕТ. Дважды за эти дни пустой вывод принимался
+  // за «не отрисовалось», хотя на деле падал сам сценарий. Ошибка обязана
+  // доехать до отчёта с именем и местом.
+  function сдаться(что){
+    try {
+      document.getElementById("ЗАМЕР").textContent=
+        JSON.stringify({ОШИБКА_ПРОБЫ:String(что && что.stack || что)});
+    } catch(е){}
+  }
+  window.addEventListener("error", function(е){ сдаться(е.error||е.message); });
+  window.addEventListener("unhandledrejection", function(е){ сдаться(е.reason); });
   function число(x){ return Math.round(x*10)/10; }
   function p_r(э){ return э.getBoundingClientRect(); }
   function p_h(р){ return р.height; }
@@ -39,8 +50,20 @@ body{width:320px;height:568px;overflow:hidden}
   // Первая редакция искала по дате — и в варианте-потолке, где дата уезжает
   // вниз, находила НИЖНИЙ ряд: подпись «не найдена» на экране, где она есть.
   // Тот же промах, что в UX-26: прибор целится в соседний узел (T158).
+  // ⚠️ ЛЕВАЯ КОЛОНКА ОПОЗНАЁТСЯ ПО НАЗВАНИЮ ОРГАНИЗАЦИИ (15px/500), А НЕ ПО
+  // ПОРЯДКУ ДЕТЕЙ. В варианте ①b строка разворачивается в столбец, и
+  // children[0] — уже обёртка, а не колонка: прибор возвращал ноль строк
+  // и молча докладывал «подписей 0 из 0». Третий раз за задачу тот же
+  // промах — цель по месту вместо цели по признаку.
+  function леваяКолонка(строка){
+    var имя=[].slice.call(строка.querySelectorAll('span')).find(function(э){
+      var с=getComputedStyle(э);
+      return с.fontSize==="15px" && с.fontWeight==="500";
+    });
+    return имя ? имя.parentElement : null;
+  }
   function ряды(строка){
-    var левая=строка.children[0];
+    var левая=леваяКолонка(строка);
     if(!левая) return [];
     return [].slice.call(левая.children).filter(function(э){
       return getComputedStyle(э).fontSize==="13px";
@@ -55,8 +78,8 @@ body{width:320px;height:568px;overflow:hidden}
              текст:(э.textContent||"").trim().slice(0,28) };
   }
   // Автор — по признаку «Фамилия И.», а не по месту: место как раз и меняется.
-  function автор(м){
-    return [].slice.call(м.parentElement.querySelectorAll('span')).find(function(э){
+  function автор(где){
+    return [].slice.call(где.querySelectorAll('span')).find(function(э){
       return /^[А-ЯЁ][а-яё\-]+\s[А-ЯЁ]\.$/.test((э.textContent||"").trim());
     });
   }
@@ -64,8 +87,8 @@ body{width:320px;height:568px;overflow:hidden}
   // overflow:hidden и flex, её scrollWidth не отражает содержимого — первая
   // редакция получила sw=18 на четырёх цифрах и чуть не доложила это числом.
   // Мерим ПОДПИСЬ внутри — последний span без потомков.
-  function оплата(м){
-    var о=[].slice.call(м.querySelectorAll('span')).find(function(э){
+  function оплата(где){
+    var о=[].slice.call(где.querySelectorAll('span')).find(function(э){
       return э.querySelector('svg');
     });
     if(!о) return null;
@@ -74,8 +97,8 @@ body{width:320px;height:568px;overflow:hidden}
     });
     return т.length? т[т.length-1] : о;
   }
-  function дата(м){
-    return [].slice.call(м.querySelectorAll('span')).find(function(э){
+  function дата(где){
+    return [].slice.call(где.querySelectorAll('span')).find(function(э){
       return /^\d{2}\.\d{2}\.\d{4}$/.test((э.textContent||"").trim());
     });
   }
@@ -88,14 +111,14 @@ body{width:320px;height:568px;overflow:hidden}
   function снимок(метка){
     var из=[];
     передки().forEach(function(с,i){
-      var м=мета(с); if(!м) return;
-      var а=автор(м), о=оплата(м), п=подложка(с);
+      var м=мета(с);
+      var а=автор(с), о=оплата(с), п=подложка(с);
       var рс=с.getBoundingClientRect();
       из.push({
         "№": i+1,
         строка: { h:число(рс.height), w:число(рс.width) },
-        мета: срез(м),
-        дата: (function(){ var д=дата(м); return д?срез(д):null; })(),
+        мета: м?срез(м):null,
+        дата: (function(){ var д=дата(с); return д?срез(д):null; })(),
         автор: а?срез(а):null,
         нехватка: а?число(а.scrollWidth-а.clientWidth):null,
         оплата: о?срез(о):null,
@@ -125,22 +148,53 @@ body{width:320px;height:568px;overflow:hidden}
     }).length;
   }
 
-  // ГИПОТЕЗА ВЛАДЕЛЬЦА, ПРИМЕНЁННАЯ К ЖИВОМУ DOM: блок оплаты уезжает
-  // на свою строку под мету. Точка-разделитель перед ним снимается — иначе
-  // новая строка начиналась бы с висящего разделителя.
-  function перенести(){
+  // ⚠️ РЕШЕНИЕ ВЛАДЕЛЬЦА 08.09 ПО МАКЕТАМ: подпись автора уходит ВТОРОЙ
+  // СТРОКОЙ под дату. Прежнее решение (вниз уезжает карта) отменено — замер
+  // показал, что оно даёт подписи +17px при нехватке 47–133.
+  //
+  // ⚠️ МЕСТ ДЛЯ «СВОЕЙ СТРОКИ» ДВА, И ОНИ ДАЮТ РАЗНУЮ ШИРИНУ. Внутри левой
+  // колонки строка наследует её пол 148px; во всю ширину карточки — 288
+  // минус поля. Разница решает вопрос «влезает ли 168», поэтому меряем оба,
+  // а не выбираем по виду разметки.
+  function рядВнизу(куда, ст){
+    var низ=document.createElement('div');
+    низ.style.cssText="display:flex;align-items:center;gap:6px;font-size:"+
+      ст.fontSize+";color:"+ст.color+";font-family:"+ст.fontFamily+
+      ";min-width:0;white-space:nowrap;overflow:hidden";
+    куда.appendChild(низ);
+    return низ;
+  }
+  // ①a — своя строка ВНУТРИ левой колонки
+  function авторВнизКолонки(){
     передки().forEach(function(с){
       var м=мета(с); if(!м) return;
-      var о=оплата(м); if(!о) return;
-      var пред=о.previousElementSibling;
+      var а=автор(с); if(!а) return;
+      var пред=а.previousElementSibling;
       if(пред && !пред.textContent.trim()) пред.remove();
-      var низ=document.createElement('div');
-      var ст=getComputedStyle(м);
-      низ.style.cssText="display:flex;align-items:center;gap:6px;font-size:"+
-        ст.fontSize+";color:"+ст.color+";font-family:"+ст.fontFamily+
-        ";min-width:0;white-space:nowrap";
-      низ.appendChild(о);
-      м.parentElement.appendChild(низ);
+      рядВнизу(м.parentElement, getComputedStyle(м)).appendChild(а);
+    });
+  }
+  // ①b — своя строка ВО ВСЮ ШИРИНУ карточки, под обеими колонками
+  function авторВнизСтроки(){
+    передки().forEach(function(с){
+      var а=[].slice.call(с.querySelectorAll('span')).find(function(э){
+        return /^[А-ЯЁ][а-яё\-]+\s[А-ЯЁ]\.$/.test((э.textContent||"").trim());
+      });
+      if(!а) return;
+      var пред=а.previousElementSibling;
+      if(пред && !пред.textContent.trim()) пред.remove();
+      // ⚠️ СТРОКА — FLEX-РЯД ИЗ ДВУХ КОЛОНОК. Чтобы подпись легла ПОД ними,
+      // а не третьей колонкой рядом, разворачиваем сам передок в столбец.
+      с.style.flexDirection="column";
+      с.style.alignItems="stretch";
+      var верх=document.createElement('div');
+      верх.style.cssText="display:flex;align-items:flex-start;"+
+        "justify-content:space-between;gap:12px";
+      while(с.children.length) верх.appendChild(с.children[0]);
+      с.appendChild(верх);
+      var низ=рядВнизу(с, getComputedStyle(а));
+      низ.style.marginTop="4px";
+      низ.appendChild(а);
     });
   }
 
@@ -148,16 +202,11 @@ body{width:320px;height:568px;overflow:hidden}
   // строки — ДРУГОЙ компонент (кнопки, без свайпа и без автора). Первая
   // редакция замера мерила её и доложила «не отрисовалось»: экран был,
   // предмета на нём не было (T165).
-  function наЧеки(){
-    var к=[].slice.call(document.querySelectorAll('button')).find(function(б){
-      return (б.textContent||"").trim()==="Чеки";
-    });
-    if(к) к.click();
-    return !!к;
-  }
-  // ⚠️ ЖЕСТ ПРОВЕРЯЕТСЯ ДЕЙСТВИЕМ, А НЕ ЧТЕНИЕМ КОДА. Вопрос владельца —
-  // «сломается ли свайп при двойной строке»; ответ по исходнику был бы
-  // рассуждением. Тянем строку пальцем и смотрим, уехала ли она.
+  // ⚠️ ЖЕСТ ПРОВЕРЯЕТСЯ ДЕЙСТВИЕМ, А НЕ ЧТЕНИЕМ КОДА, И С ОЖИДАНИЕМ.
+  // Первая редакция читала style.transform СРАЗУ после броска событий и
+  // получала «translateX(0px)» на живом жесте: обработчик зовёт setTx,
+  // а React применяет состояние следующим кадром. Прибор докладывал
+  // «жест сломан» про собственную спешку.
   function свайп(с, дальше){
     var р=с.getBoundingClientRect();
     var y=р.top+р.height/2, x0=р.right-20;
@@ -170,10 +219,6 @@ body{width:320px;height:568px;overflow:hidden}
     бросить("pointerdown",x0);
     бросить("pointermove",x0-20);
     бросить("pointermove",x0-70);
-    // ⚠️ ЖДЁМ ПЕРЕРИСОВКИ. Первая редакция читала style.transform СРАЗУ
-    // после броска событий и получала «translateX(0px)» на живом жесте:
-    // обработчик зовёт setTx, а React применяет состояние следующим кадром.
-    // Прибор докладывал «жест сломан» про собственную спешку.
     setTimeout(function(){
       var вовремя=с.style.transform;
       бросить("pointerup",x0-70);
@@ -182,19 +227,12 @@ body{width:320px;height:568px;overflow:hidden}
       }, 300);
     }, 300);
   }
-  // ВАРИАНТ B: вниз уезжает ещё и ДАТА, автор остаётся в мете один.
-  // Нужен не как предложение, а как ПОТОЛОК: показывает, сколько подпись
-  // может получить в этой колонке вообще. Если и здесь не хватает — дело
-  // не в том, что убрать из строки, а в ширине левой колонки.
-  function перенестиДату(){
-    передки().forEach(function(с){
-      var м=мета(с); if(!м) return;
-      var д=дата(м); if(!д) return;
-      var сосед=д.nextElementSibling;
-      if(сосед && !сосед.textContent.trim()) сосед.remove();
-      var низ=м.parentElement.querySelector('div:last-child');
-      if(низ && низ!==м) низ.insertBefore(д, низ.firstChild);
+  function наЧеки(){
+    var к=[].slice.call(document.querySelectorAll('button')).find(function(б){
+      return (б.textContent||"").trim()==="Чеки";
     });
+    if(к) к.click();
+    return !!к;
   }
   function готов(){ return передки().length>0 && !!мета(передки()[0]); }
   function старт(){
@@ -206,30 +244,31 @@ body{width:320px;height:568px;overflow:hidden}
       return;
     }
     var до=снимок("СЕЙЧАС");
-    // ⚠️ КОНТРОЛЬ ЖЕСТА НА ОДНОСТРОЧНОЙ СТРОКЕ — ДО переноса. Без него
+    // ⚠️ ДВА МЕСТА — ДВА ПРОГОНА, А НЕ ДВЕ ПЕРЕСТАНОВКИ ПОДРЯД. Применить
+    // ①a, а затем поверх неё ①b значило бы мерить разметку, которой ни один
+    // из вариантов не создаёт. Вариант приходит параметром ?variant=.
+    var ВАР=new URLSearchParams(location.search).get("variant")||"a";
+    // ⚠️ КОНТРОЛЬ ЖЕСТА НА ОДНОСТРОЧНОЙ СТРОКЕ — ДО перестановки. Без него
     // «жест сломан» ничего не значит: синтетическое событие могло просто
     // не дойти до обработчика, и прибор доложил бы про себя.
+    try {
     свайп(передки()[0], function(жест1){
       до.жест=жест1;
-      перенести();
+      if(ВАР==="b") авторВнизСтроки(); else авторВнизКолонки();
       setTimeout(function(){
-        var после=снимок("ПОСЛЕ ПЕРЕНОСА КАРТЫ ВНИЗ");
-        // ⚠️ ВТОРУЮ СТРОКУ, А НЕ ПЕРВУЮ: первая осталась ОТКРЫТОЙ после
-        // контрольного жеста (translateX(-72px)), и повторный свайп по ней
-        // мерил бы уже сдвинутую строку — «уехала» вышло бы даром.
+        var после=снимок(ВАР==="b"
+          ? "①b автор своей строкой ВО ВСЮ ШИРИНУ карточки"
+          : "①a автор своей строкой ВНУТРИ левой колонки");
         свайп(передки()[1], function(жест2){
           после.жест=жест2;
-          var п=подложка(передки()[0]);
+          var п=подложка(передки()[1]);
           после.подложкаПослеЖеста=п?число(p_h(p_r(п))):null;
-          перенестиДату();
-          setTimeout(function(){
-            var потолок=снимок("ПОТОЛОК: вниз уехали и карта, и дата");
-            document.getElementById("ЗАМЕР").textContent=
-              JSON.stringify({до:до, после:после, потолок:потолок});
-          }, 300);
+          document.getElementById("ЗАМЕР").textContent=
+            JSON.stringify({до:до, после:после});
         });
       }, 300);
     });
+    } catch(е){ сдаться(е); }
   }
   старт();
 })();

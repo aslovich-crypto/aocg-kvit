@@ -78,8 +78,13 @@ body{width:320px;height:568px;overflow:hidden}
              текст:(э.textContent||"").trim().slice(0,28) };
   }
   // Автор — по признаку «Фамилия И.», а не по месту: место как раз и меняется.
+  // ⚠️ ЛИСТЬЯ ЛЮБОГО ТЕГА: с 08.09 подпись — БЛОЧНЫЙ узел своей строки,
+  // а не span в мета-строке. Проба, знавшая только span, доложила бы
+  // «автора нет» на экране, где он стоит.
   function автор(где){
-    return [].slice.call(где.querySelectorAll('span')).find(function(э){
+    return [].slice.call(где.querySelectorAll('span,div')).filter(function(э){
+      return !э.children.length;
+    }).find(function(э){
       return /^[А-ЯЁ][а-яё\-]+\s[А-ЯЁ]\.$/.test((э.textContent||"").trim());
     });
   }

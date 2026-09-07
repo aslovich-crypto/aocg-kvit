@@ -15,7 +15,11 @@ import { fileURLToPath } from "node:url";
 
 const КОРЕНЬ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ПРОБА = path.join(КОРЕНЬ, "scripts/probe-stroka");
-const ПОРТ = 5700 + Math.floor(Math.random() * 200);
+// ⚠️ СВОЙ ДИАПАЗОН. Первая редакция взяла 5700+, где уже сидит
+// check-author.mjs: два прибора дрались за порт, и check-author молча
+// падал на --strictPort. Диагноз поставлен по тому, что ПРОПУСК МУТАЦИИ
+// ПЕРЕЕЗЖАЛ между прогонами — значит дело в оснастке, а не в мутанте.
+const ПОРТ = 5300 + Math.floor(Math.random() * 200);
 const БРАУЗЕРЫ = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",

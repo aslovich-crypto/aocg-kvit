@@ -1322,10 +1322,16 @@ function SwipeableReceiptCard({ receipt, onClick, onDelete, автор }) {
         style={{
           background: theme.surface,
           padding: "14px 16px",
+          // ⚠️ СТОЛБЕЦ, А НЕ РЯД (T172). Подпись автора получает СВОЮ строку
+          // во всю ширину карточки — под обеими колонками. Замер 08.09 при
+          // 320: в мета-строке ей доставалось 35px из нужных 168; своей
+          // строкой внутри левой колонки — 148 (три длинные фамилии всё
+          // равно обрезаны); во всю ширину — 168, обрезанных ноль.
+          // Цена замерена, а не прикинута: высота строки 78 → 110, на экране
+          // 320×568 видно 5 чеков вместо 3. Владелец выбрал подпись.
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
+          flexDirection: "column",
+          gap: 4,
           transform: `translateX(${tx}px)`,
           transition: drag ? "none" : "transform 0.2s ease",
           cursor: "pointer",
@@ -1333,7 +1339,16 @@ function SwipeableReceiptCard({ receipt, onClick, onDelete, автор }) {
           touchAction: "pan-y",
         }}
       >
-        {/* left — название + строка (дата · оплата)
+        {/* ряд из двух колонок — то, что раньше было самим передком */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          {/* left — название + строка (дата · оплата)
 
             ПОЛ 148px. Без него на узком экране длинная пилюля категории
             («Представительские расходы») забирала всю строку, и мете
@@ -1346,107 +1361,95 @@ function SwipeableReceiptCard({ receipt, onClick, onDelete, автор }) {
             встаёт с 148. Состав: дата 66 + зазор 6 + точка 3 + зазор 6 +
             иконка 14 + зазор 4 + цифры 34.5.
             Родня: тот же пол (152) стоит на «Главной» по тем же причинам. */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 148,
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 500,
-              fontFamily: FONT,
-              color: C.dark,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {shortOrg(r.org)}
-          </span>
           <div
             style={{
+              flex: 1,
+              minWidth: 148,
               display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              color: "#636B7D",
-              fontFamily: FONT,
-              fontVariantNumeric: "tabular-nums",
-              minWidth: 0,
-              whiteSpace: "nowrap",
+              flexDirection: "column",
+              gap: 4,
             }}
           >
-            <span style={{ flexShrink: 0 }}>{fmtDate(r.date)}</span>
-            {/* ⚠️ АВТОР — ТОЛЬКО ТЕМ, КТО ВИДИТ ЧУЖИЕ ЧЕКИ (решение владельца
-                04.09.2026, тот же приём, что в списке отчётов). У сотрудника
-                список и так свой: столбец с одним повторяющимся именем —
-                шум. Пустую строку не рисуем вовсе, поэтому и разделителя
-                перед ней нет. */}
-            {автор ? (
-              <>
-                <span style={dot} />
-                <span
-                  style={{
-                    flexShrink: 1,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {автор}
-                </span>
-              </>
-            ) : null}
-            <span style={dot} />
-            {/* Способ оплаты — как в макете: иконка карты (или купюр
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                fontFamily: FONT,
+                color: C.dark,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {shortOrg(r.org)}
+            </span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                color: "#636B7D",
+                fontFamily: FONT,
+                fontVariantNumeric: "tabular-nums",
+                minWidth: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ flexShrink: 0 }}>{fmtDate(r.date)}</span>
+              {/* ⚠️ АВТОРА ЗДЕСЬ БОЛЬШЕ НЕТ — он уехал СВОЕЙ СТРОКОЙ ниже
+                (T172). В этой строке ему не хватало места по устройству:
+                пол 148px выведен замером 06.08 под состав БЕЗ автора
+                (дата 66 + точка 3 + иконка 14 + цифры 34.5 + зазоры = 133.5),
+                а автора дописали 04.09 — ему оставалось 5.5px.
+                Показывается он по-прежнему только тем, кто видит чужие чеки
+                (`canApprove`, App.jsx ниже): у сотрудника список и так свой,
+                и столбец с одним повторяющимся именем — шум. */}
+              <span style={dot} />
+              {/* Способ оплаты — как в макете: иконка карты (или купюр
                 для наличных) и последние четыре цифры. Имя карты в списке
                 не показываем, оно остаётся в деталях чека.
                 ИСТОЧНИК ЧЕКА («ФНС», «QR», «Фото», «Вручную») УБРАН: этого
                 элемента в макете нет вовсе. Вместе с ним стала не нужна
                 механика «узкой карточки» (useNarrowCard, порог 309px) —
                 она существовала только ради него. */}
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                minWidth: 0,
-                overflow: "hidden",
-              }}
-            >
-              {isCash(r) ? (
-                <Banknote
-                  size={14}
-                  color={theme.fg2}
-                  strokeWidth={2}
-                  style={{ flexShrink: 0 }}
-                />
-              ) : (
-                <CreditCard
-                  size={14}
-                  color={theme.fg2}
-                  strokeWidth={2}
-                  style={{ flexShrink: 0 }}
-                />
-              )}
               <span
                 style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
                   minWidth: 0,
+                  overflow: "hidden",
                 }}
               >
-                {paymentShort(r)}
+                {isCash(r) ? (
+                  <Banknote
+                    size={14}
+                    color={theme.fg2}
+                    strokeWidth={2}
+                    style={{ flexShrink: 0 }}
+                  />
+                ) : (
+                  <CreditCard
+                    size={14}
+                    color={theme.fg2}
+                    strokeWidth={2}
+                    style={{ flexShrink: 0 }}
+                  />
+                )}
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                  }}
+                >
+                  {paymentShort(r)}
+                </span>
               </span>
-            </span>
+            </div>
           </div>
-        </div>
-        {/* right — сумма и под ней пилюля категории, как в макете
+          {/* right — сумма и под ней пилюля категории, как в макете
             templates/receipts/Чеки.html: `.right` = колонка, align-items
             flex-end, gap 7, flex-shrink 0; пилюля 12px/500, padding 5×10,
             radius 999, nowrap.
@@ -1464,47 +1467,75 @@ function SwipeableReceiptCard({ receipt, onClick, onDelete, автор }) {
             потому что там ширина 402 и категории короткие («Питание»); наши
             («Представительские расходы») длиннее макетных, и это ровно тот
             случай, когда вёрстку под ширину подгонять можно. */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 7,
-            flexShrink: 1,
-            minWidth: 0,
-          }}
-        >
-          <span
+          <div
             style={{
-              fontSize: 15,
-              fontWeight: 600,
-              fontFamily: FONT,
-              color: C.dark,
-              fontVariantNumeric: "tabular-nums",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 7,
+              flexShrink: 1,
+              minWidth: 0,
             }}
           >
-            {money(r.amount)}
-          </span>
-          <span
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                fontFamily: FONT,
+                color: C.dark,
+                fontVariantNumeric: "tabular-nums",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {money(r.amount)}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                fontFamily: FONT,
+                padding: "5px 10px",
+                borderRadius: 999,
+                background: col.bg,
+                color: col.fg,
+                whiteSpace: "nowrap",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {catName(r)}
+            </span>
+          </div>
+        </div>
+        {/* ⚠️ ПОДПИСЬ АВТОРА — СВОЕЙ СТРОКОЙ ВО ВСЮ ШИРИНУ (T172, решение
+            владельца 08.09.2026). Раньше она стояла в мета-строке между
+            датой и картой и обрезалась ВСЕГДА: замер при 320 показал
+            7 обрезанных из 7, самой длинной фамилии было видно 35px из 168.
+            ⚠️ ПОЧЕМУ НЕ ВНУТРИ ЛЕВОЙ КОЛОНКИ, где она стоила бы дешевле
+            (+8px высоты вместо +32): колонка упирается в свой пол 148px, и
+            три длинные фамилии из семи остались бы обрезанными. Владелец:
+            «ради подписи и затевали, иначе через месяц заведём ту же
+            строку заново».
+            ⚠️ СТРОКИ НЕТ ВОВСЕ, КОГДА НЕТ ПОДПИСИ. Подпись приходит пустой
+            сотруднику (он видит только свои чеки), и пустой ряд добавлял бы
+            ему высоту ни за что. */}
+        {автор ? (
+          <div
             style={{
-              fontSize: 12,
-              fontWeight: 500,
+              fontSize: 13,
+              color: "#636B7D",
               fontFamily: FONT,
-              padding: "5px 10px",
-              borderRadius: 999,
-              background: col.bg,
-              color: col.fg,
-              whiteSpace: "nowrap",
-              maxWidth: "100%",
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
-            {catName(r)}
-          </span>
-        </div>
+            {автор}
+          </div>
+        ) : null}
       </div>
     </div>
   );

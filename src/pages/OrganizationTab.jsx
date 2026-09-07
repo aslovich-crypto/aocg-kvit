@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import LoadFailure from "../components/LoadFailure";
 import { C, FONT, theme } from "../lib/theme";
+import { TAX_LABELS } from "../lib/tax";
 
 // Вкладка «Организация» в Настройках (задача #1, фронт).
 // Профиль своей орг: показ name/inn/тип/дата; правка name/inn только для admin.
@@ -9,16 +10,6 @@ import { C, FONT, theme } from "../lib/theme";
 // пропсами из NastroykiPage — чтобы не наращивать App.jsx и не плодить дубли.
 
 const TYPE_LABEL = { company: "Компания", person: "ИП" };
-
-// Налоговые режимы — зеркало TAX_SYSTEMS на бэке (organizations.py).
-const TAX_LABELS = {
-  osno: "ОСНО",
-  usn_d: "УСН «Доходы»",
-  usn_dr: "УСН «Доходы−Расходы»",
-  psn: "Патент",
-  npd: "НПД",
-  eshn: "ЕСХН",
-};
 
 // FastAPI отдаёт detail строкой (400) или списком объектов (422) — нормализуем.
 function extractErr(e) {
